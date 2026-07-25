@@ -20,8 +20,10 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 #include <coroutine>
 #include <vector>
+#include <verilated.h>
 
 namespace corosim {
 
@@ -96,6 +98,45 @@ private:
     bool dirty  = false;
     bool posedge_flag = false;
     bool negedge_flag = false;
+};
+
+// ---- Signal<VlWide<N>> specialization (65+ bit signals) ----
+template <int N>
+class Signal<VlWide<N>> : public SignalBase {
+public:
+    explicit Signal(VlWide<N>* ptr) : ptr(ptr) {
+        std::memcpy(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N);
+        SignalRegistry::all().push_back(this);
+    }
+
+    const uint32_t* read() const { return ptr->m_storage; }
+
+    void next(const VlWide<N>& val) {
+        pending = true;
+        next_val = val;
+    }
+
+    void commit() override {
+        if (pending) {
+            std::memcpy(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N);
+            *ptr = next_val;
+            dirty = std::memcmp(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N) != 0;
+            pending = false;
+        }
+    }
+
+    bool is_dirty() const override { return dirty; }
+    void clear_dirty() override { dirty = false; }
+    bool had_posedge() const override { return false; }
+    bool had_negedge() const override { return false; }
+    void clear_edge_flags() override {}
+
+private:
+    VlWide<N>*  ptr;
+    VlWide<N>   prev_val;
+    VlWide<N>   next_val;
+    bool pending = false;
+    bool dirty  = false;
 };
 
 // ---- Signal<bool> specialization: accepts uint8_t* (Verilator CData) ----
