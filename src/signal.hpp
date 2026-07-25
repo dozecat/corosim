@@ -22,7 +22,6 @@
 #include <cstdint>
 #include <coroutine>
 #include <vector>
-#include <verilated.h>
 
 namespace corosim {
 
@@ -31,23 +30,6 @@ class Engine;
 namespace detail {
 void register_edge_watcher(void* sig_base, int edge, std::coroutine_handle<> h);
 }
-
-template <typename T> class Signal;
-
-/// @brief Bit-width to Verilator type mapping (from vaxivip)
-#define corosim_sig_t(msb, lsb) \
-    typename std::conditional<((msb+1)-(lsb)) <= 8,  CData, \
-    typename std::conditional<((msb+1)-(lsb)) <= 16, SData, \
-    typename std::conditional<((msb+1)-(lsb)) <= 32, IData, \
-    typename std::conditional<((msb+1)-(lsb)) <= 64, QData, \
-    VlWide<(((msb+1)-(lsb))+31)/32>>::type>::type>::type>::type
-
-/// @brief Convenience: Signal with auto-deduced type from bit range
-template <int MSB, int LSB>
-using auto_sig = Signal<corosim_sig_t(MSB, LSB)>;
-
-/// @brief 1-bit alias (Verilator CData = uint8_t)
-using bit = uint8_t;
 
 enum EdgeType : int { POSEDGE = 0, NEGEDGE = 1, CHANGE = 2 };
 
