@@ -29,7 +29,7 @@
 
 using namespace corosim;
 
-Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* wr_clk) {
+Task reset_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk) {
     std::printf("[clock_cycles] reset hold for 3 clocks\n");
     rst->next(1);
     co_await clock_cycles(*wr_clk, 3);
@@ -37,9 +37,9 @@ Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* wr_clk) {
     std::printf("[clock_cycles] reset done\n");
 }
 
-Task write_proc(Signal<uint8_t>* rst, Signal<uint8_t>* wr_clk,
-                Signal<uint8_t>* wr_en, Signal<uint8_t>* wr_data,
-                Signal<uint8_t>* wr_full, Event* go) {
+Task write_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk,
+                Signal<bool>* wr_en, Signal<uint8_t>* wr_data,
+                Signal<bool>* wr_full, Event* go) {
     co_await go->wait();
     std::printf("[Event] write driver started\n");
 
@@ -62,15 +62,15 @@ int main(int argc, char* argv[]) {
     top.trace(&tfp, 99);
     tfp.open("waveform.vcd");
 
-    Signal<uint8_t>  rst(&top.rst);
+    Signal<bool>     rst(&top.rst);
     Signal<uint8_t>  wr_clk(&top.wr_clk);
     Signal<uint8_t>  wr_data(&top.wr_data);
-    Signal<uint8_t>  wr_en(&top.wr_en);
-    Signal<uint8_t>  wr_full(&top.wr_full);
-    Signal<uint8_t>  wr_overflow(&top.wr_overflow);
+    Signal<bool>     wr_en(&top.wr_en);
+    Signal<bool>     wr_full(&top.wr_full);
+    Signal<bool>     wr_overflow(&top.wr_overflow);
     Signal<uint8_t>  rd_clk(&top.rd_clk);
-    Signal<uint8_t>  rd_en(&top.rd_en);
-    Signal<uint8_t>  rd_empty(&top.rd_empty);
+    Signal<bool>     rd_en(&top.rd_en);
+    Signal<bool>     rd_empty(&top.rd_empty);
 
     Engine sim;
 

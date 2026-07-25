@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <coroutine>
 #include <vector>
+#include <verilated.h>
 
 namespace corosim {
 
@@ -30,6 +31,23 @@ class Engine;
 namespace detail {
 void register_edge_watcher(void* sig_base, int edge, std::coroutine_handle<> h);
 }
+
+template <typename T> class Signal;
+
+/// @brief Bit-width to Verilator type mapping (from vaxivip)
+#define corosim_sig_t(msb, lsb) \
+    typename std::conditional<((msb+1)-(lsb)) <= 8,  CData, \
+    typename std::conditional<((msb+1)-(lsb)) <= 16, SData, \
+    typename std::conditional<((msb+1)-(lsb)) <= 32, IData, \
+    typename std::conditional<((msb+1)-(lsb)) <= 64, QData, \
+    VlWide<(((msb+1)-(lsb))+31)/32>>::type>::type>::type>::type
+
+/// @brief Convenience: Signal with auto-deduced type from bit range
+template <int MSB, int LSB>
+using auto_sig = Signal<corosim_sig_t(MSB, LSB)>;
+
+/// @brief 1-bit alias (Verilator CData = uint8_t)
+using bit = uint8_t;
 
 enum EdgeType : int { POSEDGE = 0, NEGEDGE = 1, CHANGE = 2 };
 
@@ -92,6 +110,53 @@ private:
     T*   ptr;
     T    prev_val;
     T    next_val;
+    bool pending = false;
+    bool dirty  = false;
+    bool posedge_flag = false;
+    bool negedge_flag = false;
+};
+
+// ---- Signal<bool> specialization: accepts uint8_t* (Verilator CData) ----
+template <>
+class Signal<bool> : public SignalBase {
+public:
+    explicit Signal(uint8_t* ptr) : ptr(ptr), prev_val(*ptr) {
+        SignalRegistry::all().push_back(this);
+    }
+
+    bool read() const { return *ptr != 0; }
+    operator bool() const { return read(); }
+
+    void next(bool val) {
+        next_val = val ? 1 : 0;
+        pending = true;
+    }
+
+    void commit() override {
+        if (pending) {
+            prev_val = *ptr;
+            *ptr = next_val;
+            if (!prev_val && *ptr) posedge_flag = true;
+            if (prev_val && !*ptr) negedge_flag = true;
+            dirty = (prev_val != *ptr);
+            pending = false;
+        }
+    }
+
+    bool is_dirty() const override { return dirty; }
+    void clear_dirty() override { dirty = false; }
+    bool had_posedge() const override { return posedge_flag; }
+    bool had_negedge() const override { return negedge_flag; }
+
+    void clear_edge_flags() override {
+        posedge_flag = false;
+        negedge_flag = false;
+    }
+
+private:
+    uint8_t* ptr;
+    uint8_t  prev_val;
+    uint8_t  next_val;
     bool pending = false;
     bool dirty  = false;
     bool posedge_flag = false;
