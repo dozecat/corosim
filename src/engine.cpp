@@ -7,9 +7,7 @@
  * @see         https://github.com/dozecat/corosim
  *
  * @details     Engine::run() implements the Verilator co-simulation loop.
- *              Pre/Post naming follows vaxivip/sim_coop convention:
- *              pre_eval = BFM update_input (before eval, sample DUT outputs)
- *              post_eval = BFM update_output (after eval, drive DUT inputs)
+ *              Pre/Post naming follows SimCoop/vaxivip convention.
  *
  * Modification History:
  * Ver   Who  Date        Changes
@@ -146,20 +144,35 @@ void Engine::process_delay_wakeups() {
 void Engine::run(sim_time duration) {
     current_engine = this;
 
+    // Init: only run DELAY (set wakeup) and ALWAYS_COMB (init values)
+    // Edge/change procs fire on actual edges only
     for (auto& p : simple_procs_) {
         if (p.type == SimpleProc::DELAY)
             p.next_wakeup = now_ + p.interval;
-        if (p.fn) p.fn();
+        if ((p.type == SimpleProc::DELAY || p.type == SimpleProc::ALWAYS_COMB) && p.fn)
+            p.fn();
     }
     commit_all();
+
+    // First eval cycle with BFM hooks
+    for (auto& cb : pre_callbacks_) cb();
     if (eval_fn_) eval_fn_();
+    for (auto& cb : post_callbacks_) cb();
+    commit_all();
+
     set_time(0);
     if (dump_fn_) dump_fn_(0);
 
+    // Start coroutine tasks (resume past initial_suspend)
     for (auto& c : coro_procs_) c.task.resume();
 
+    // Clear edge flags from init so main loop starts clean
+    for (auto* sig : SignalRegistry::all())
+        sig->clear_edge_flags();
+
+    // Main simulation loop
     for (now_ = 1; now_ <= duration; now_++) {
-        // ---- Phase 1: delay-triggered processes ----
+        // Phase 1: delay-triggered processes
         for (auto& p : simple_procs_) {
             if (p.type == SimpleProc::DELAY && p.next_wakeup == now_) {
                 p.fn();
@@ -168,13 +181,13 @@ void Engine::run(sim_time duration) {
         }
         commit_all();
 
-        // ---- Phase 2: pre_eval callbacks (BFM update_input) ----
+        // Phase 2: pre_eval callbacks (BFM update_input)
         for (auto& cb : pre_callbacks_) cb();
 
-        // ---- Phase 3: eval ----
+        // Phase 3: eval
         if (eval_fn_) eval_fn_();
 
-        // ---- Phase 4: edge/change-triggered processes ----
+        // Phase 4: edge/change-triggered processes
         for (auto& p : simple_procs_) {
             if (!p.fn) continue;
             switch (p.type) {
@@ -192,22 +205,23 @@ void Engine::run(sim_time duration) {
         }
         commit_all();
 
-        // ---- Phase 5: post_eval callbacks (BFM update_output) ----
+        // Phase 5: post_eval callbacks (BFM update_output)
+        if (!post_callbacks_.empty() && now_ <= 5) fprintf(stderr, "PH5 t=%llu\n", (unsigned long long)now_);
         for (auto& cb : post_callbacks_) cb();
         commit_all();
 
-        // ---- Phase 6: always_comb delta iteration ----
+        // Phase 6: always_comb
         run_always_comb();
 
-        // ---- Phase 7: coroutine watchers ----
+        // Phase 7: coroutine watchers
         check_edge_watchers();
         process_delay_wakeups();
 
-        // ---- Phase 8: clear edge flags ----
+        // Phase 8: clear edge flags
         for (auto* sig : SignalRegistry::all())
             sig->clear_edge_flags();
 
-        // ---- Phase 9: waveform dump ----
+        // Phase 9: waveform dump
         set_time(now_);
         if (dump_fn_) dump_fn_(now_);
     }

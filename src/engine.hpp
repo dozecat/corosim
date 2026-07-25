@@ -6,16 +6,10 @@
  * @brief       Simulation engine declaration
  * @see         https://github.com/dozecat/corosim
  *
- * @details     The Engine class manages the Verilator simulation loop:
- *              Phase 1  delay-triggered processes → commit_all
- *              Phase 2  pre_eval callbacks (BFM update_input)
- *              Phase 3  top->eval()
- *              Phase 4  edge/change-triggered processes → commit_all
- *              Phase 5  post_eval callbacks (BFM update_output) → commit_all
- *              Phase 6  always_comb delta iteration
- *              Phase 7  coroutine edge watchers + delay wakeups
- *              Phase 8  clear edge flags
- *              Phase 9  waveform dump
+ * @details     The Engine class manages the Verilator simulation loop.
+ *              pre_eval/post_eval conventions follow SimCoop/vaxivip:
+ *              pre_eval  → BFM update_input (before eval, sample DUT outputs)
+ *              post_eval → BFM update_output (after eval, drive DUT inputs)
  *
  * Modification History:
  * Ver   Who  Date        Changes
