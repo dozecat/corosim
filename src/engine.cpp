@@ -6,16 +6,10 @@
  * @brief       Simulation engine implementation
  * @see         https://github.com/dozecat/corosim
  *
- * @details     Engine::run() implements the Verilator co-simulation loop:
- *              Phase 1  delay-triggered simple processes
- *              Phase 2  top->eval()
- *              Phase 3  edge/change-triggered simple processes
- *              Phase 4  pre/post eval callbacks (vaxivip BFM compat)
- *              Phase 5  always_comb delta iteration
- *              Phase 6  coroutine edge watchers
- *              Phase 7  coroutine delay wakeups
- *              Phase 8  clear edge flags
- *              Phase 9  waveform dump
+ * @details     Engine::run() implements the Verilator co-simulation loop.
+ *              Pre/Post naming follows vaxivip/sim_coop convention:
+ *              pre_eval = BFM update_input (before eval, sample DUT outputs)
+ *              post_eval = BFM update_output (after eval, drive DUT inputs)
  *
  * Modification History:
  * Ver   Who  Date        Changes
@@ -165,6 +159,7 @@ void Engine::run(sim_time duration) {
     for (auto& c : coro_procs_) c.task.resume();
 
     for (now_ = 1; now_ <= duration; now_++) {
+        // ---- Phase 1: delay-triggered processes ----
         for (auto& p : simple_procs_) {
             if (p.type == SimpleProc::DELAY && p.next_wakeup == now_) {
                 p.fn();
@@ -173,8 +168,13 @@ void Engine::run(sim_time duration) {
         }
         commit_all();
 
+        // ---- Phase 2: pre_eval callbacks (BFM update_input) ----
+        for (auto& cb : pre_callbacks_) cb();
+
+        // ---- Phase 3: eval ----
         if (eval_fn_) eval_fn_();
 
+        // ---- Phase 4: edge/change-triggered processes ----
         for (auto& p : simple_procs_) {
             if (!p.fn) continue;
             switch (p.type) {
@@ -192,17 +192,22 @@ void Engine::run(sim_time duration) {
         }
         commit_all();
 
-        for (auto& cb : pre_callbacks_) cb();
+        // ---- Phase 5: post_eval callbacks (BFM update_output) ----
         for (auto& cb : post_callbacks_) cb();
         commit_all();
 
+        // ---- Phase 6: always_comb delta iteration ----
         run_always_comb();
+
+        // ---- Phase 7: coroutine watchers ----
         check_edge_watchers();
         process_delay_wakeups();
 
+        // ---- Phase 8: clear edge flags ----
         for (auto* sig : SignalRegistry::all())
             sig->clear_edge_flags();
 
+        // ---- Phase 9: waveform dump ----
         set_time(now_);
         if (dump_fn_) dump_fn_(now_);
     }

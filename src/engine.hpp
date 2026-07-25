@@ -7,9 +7,15 @@
  * @see         https://github.com/dozecat/corosim
  *
  * @details     The Engine class manages the Verilator simulation loop:
- *              process registration, commit/eval cycle, edge detection,
- *              delta-cycle iteration for always_comb, and coroutine
- *              scheduling via edge watchers and delay wakeups.
+ *              Phase 1  delay-triggered processes → commit_all
+ *              Phase 2  pre_eval callbacks (BFM update_input)
+ *              Phase 3  top->eval()
+ *              Phase 4  edge/change-triggered processes → commit_all
+ *              Phase 5  post_eval callbacks (BFM update_output) → commit_all
+ *              Phase 6  always_comb delta iteration
+ *              Phase 7  coroutine edge watchers + delay wakeups
+ *              Phase 8  clear edge flags
+ *              Phase 9  waveform dump
  *
  * Modification History:
  * Ver   Who  Date        Changes
