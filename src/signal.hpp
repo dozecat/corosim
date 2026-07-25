@@ -190,7 +190,7 @@ template <typename T>
 class Posedge {
     static_assert(sizeof(T) <= 1, "posedge/negedge supports 1-byte signals only");
 public:
-    explicit Posedge(Signal<T>& sig) : sig_(&sig) {}
+    explicit Posedge(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> h) {
@@ -208,7 +208,7 @@ template <typename T>
 class Negedge {
     static_assert(sizeof(T) <= 1, "posedge/negedge supports 1-byte signals only");
 public:
-    explicit Negedge(Signal<T>& sig) : sig_(&sig) {}
+    explicit Negedge(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> h) {
@@ -225,7 +225,7 @@ private:
 template <typename T>
 class Change {
 public:
-    explicit Change(Signal<T>& sig) : sig_(&sig) {}
+    explicit Change(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
     void await_suspend(std::coroutine_handle<> h) {
@@ -240,12 +240,12 @@ private:
 };
 
 template <typename T>
-Posedge<T> posedge(Signal<T>& sig) { return Posedge<T>(sig); }
+Posedge<T> posedge(const Signal<T>& sig) { return Posedge<T>(sig); }
 
 template <typename T>
-Negedge<T> negedge(Signal<T>& sig) { return Negedge<T>(sig); }
+Negedge<T> negedge(const Signal<T>& sig) { return Negedge<T>(sig); }
 
 template <typename T>
-Change<T> change(Signal<T>& sig) { return Change<T>(sig); }
+Change<T> change(const Signal<T>& sig) { return Change<T>(sig); }
 
 } // namespace corosim
