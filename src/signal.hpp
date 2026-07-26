@@ -1,22 +1,3 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        signal.hpp
- * @brief       Signal wrappers and edge/change trigger types
- * @see         https://github.com/dozecat/corosim
- *
- * @details     SignalBase provides the engine interface for NBA commit and
- *              edge detection. Signal<T> wraps a Verilator signal pointer
- *              with non-blocking assignment (next/read). Free functions
- *              (posedge/negedge/change) create trigger/awaiter objects.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/25  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <cstdint>
@@ -25,15 +6,15 @@
 #include <vector>
 #include <verilated.h>
 
+#include "types.hpp"
+
 namespace corosim {
 
 class Engine;
 
 namespace detail {
-void register_edge_watcher(void* sig_base, int edge, std::coroutine_handle<> h);
-}
 
-enum EdgeType : int { POSEDGE = 0, NEGEDGE = 1, CHANGE = 2 };
+void register_edge_watcher(void* sig_base, TriggerInfo::Type edge, std::coroutine_handle<> h);
 
 class SignalBase {
 public:
@@ -54,151 +35,180 @@ public:
     }
 };
 
-template <typename T>
-class Signal : public SignalBase {
+template <typename T> class Posedge;
+template <typename T> class Negedge;
+template <typename T> class Change;
+
+} // namespace detail
+
+class SignalRegistry {
 public:
-    explicit Signal(T* ptr) : ptr(ptr), prev_val(*ptr) {
-        SignalRegistry::all().push_back(this);
-    }
-
-    T read() const { return *ptr; }
-    operator T() const { return read(); }
-
-    void next(T val) {
-        next_val = val;
-        pending = true;
-    }
-
-    void commit() override {
-        if (pending) {
-            prev_val = *ptr;
-            *ptr = next_val;
-            if (!prev_val && *ptr) posedge_flag = true;
-            if (prev_val && !*ptr) negedge_flag = true;
-            dirty = (prev_val != *ptr);
-            pending = false;
-        }
-    }
-
-    bool is_dirty() const override { return dirty; }
-    void clear_dirty() override { dirty = false; }
-    bool had_posedge() const override { return posedge_flag; }
-    bool had_negedge() const override { return negedge_flag; }
-
-    void clear_edge_flags() override {
-        posedge_flag = false;
-        negedge_flag = false;
-    }
-
-private:
-    T*   ptr;
-    T    prev_val;
-    T    next_val;
-    bool pending = false;
-    bool dirty  = false;
-    bool posedge_flag = false;
-    bool negedge_flag = false;
+    static inline std::vector<detail::SignalBase*> reg;
+    static std::vector<detail::SignalBase*>& all() { return reg; }
 };
 
-// ---- Signal<VlWide<N>> specialization (65+ bit signals) ----
-template <int N>
-class Signal<VlWide<N>> : public SignalBase {
+template <typename T>
+class Signal : private detail::SignalBase {
+    friend class Engine;
+    template <typename U> friend class detail::Posedge;
+    template <typename U> friend class detail::Negedge;
+    template <typename U> friend class detail::Change;
+
 public:
-    explicit Signal(VlWide<N>* ptr) : ptr(ptr) {
-        std::memcpy(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N);
+    Signal() : ptr_(&store_), prev_val_(T{}) {
         SignalRegistry::all().push_back(this);
     }
 
-    const uint32_t* read() const { return ptr->m_storage; }
-
-    void next(const VlWide<N>& val) {
-        pending = true;
-        next_val = val;
+    explicit Signal(T* ptr) : ptr_(ptr), prev_val_(*ptr) {
+        SignalRegistry::all().push_back(this);
     }
 
+    T read() const { return *ptr_; }
+    operator T() const { return read(); }
+    void next(T val) { next_val_ = val; pending_ = true; }
+
+private:
+    T* ptr_;
+    T store_{};
+    T prev_val_;
+    T next_val_;
+
+    bool pending_ = false;
+    bool dirty_ = false;
+    bool posedge_flag_ = false;
+    bool negedge_flag_ = false;
+
     void commit() override {
-        if (pending) {
-            std::memcpy(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N);
-            *ptr = next_val;
-            dirty = std::memcmp(prev_val.m_storage, ptr->m_storage, sizeof(uint32_t) * N) != 0;
-            pending = false;
+        if (pending_) {
+            prev_val_ = *ptr_;
+            *ptr_ = next_val_;
+            if (!prev_val_ && *ptr_) posedge_flag_ = true;
+            if (prev_val_ && !*ptr_) negedge_flag_ = true;
+            dirty_ = (prev_val_ != *ptr_);
+            pending_ = false;
         }
     }
 
-    bool is_dirty() const override { return dirty; }
-    void clear_dirty() override { dirty = false; }
+    bool is_dirty() const override { return dirty_; }
+    void clear_dirty() override { dirty_ = false; }
+    bool had_posedge() const override { return posedge_flag_; }
+    bool had_negedge() const override { return negedge_flag_; }
+    void clear_edge_flags() override { posedge_flag_ = false; negedge_flag_ = false; }
+};
+
+template <int N>
+class Signal<VlWide<N>> : private detail::SignalBase {
+    friend class Engine;
+
+public:
+    Signal() {
+        std::memset(store_.m_storage, 0, sizeof(uint32_t) * N);
+        ptr_ = &store_;
+        std::memset(prev_val_.m_storage, 0, sizeof(uint32_t) * N);
+        SignalRegistry::all().push_back(this);
+    }
+
+    explicit Signal(VlWide<N>* ptr) : ptr_(ptr) {
+        std::memcpy(prev_val_.m_storage, ptr->m_storage, sizeof(uint32_t) * N);
+        SignalRegistry::all().push_back(this);
+    }
+
+    const uint32_t* read() const { return ptr_->m_storage; }
+    void next(const VlWide<N>& val) { next_val_ = val; pending_ = true; }
+
+private:
+    VlWide<N>* ptr_;
+    VlWide<N> store_;
+    VlWide<N> prev_val_;
+    VlWide<N> next_val_;
+    bool pending_ = false;
+    bool dirty_ = false;
+
+    void commit() override {
+        if (pending_) {
+            std::memcpy(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N);
+            *ptr_ = next_val_;
+            dirty_ = std::memcmp(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N) != 0;
+            pending_ = false;
+        }
+    }
+
+    bool is_dirty() const override { return dirty_; }
+    void clear_dirty() override { dirty_ = false; }
     bool had_posedge() const override { return false; }
     bool had_negedge() const override { return false; }
     void clear_edge_flags() override {}
-
-private:
-    VlWide<N>*  ptr;
-    VlWide<N>   prev_val;
-    VlWide<N>   next_val;
-    bool pending = false;
-    bool dirty  = false;
 };
 
-// ---- Signal<bool> specialization: accepts uint8_t* (Verilator CData) ----
 template <>
-class Signal<bool> : public SignalBase {
+class Signal<bool> : private detail::SignalBase {
+    friend class Engine;
+    template <typename U> friend class detail::Posedge;
+    template <typename U> friend class detail::Negedge;
+    template <typename U> friend class detail::Change;
+
 public:
-    explicit Signal(uint8_t* ptr) : ptr(ptr), prev_val(*ptr) {
+    Signal() : ptr_(&store_), prev_val_(0) {
         SignalRegistry::all().push_back(this);
     }
 
-    bool read() const { return *ptr != 0; }
-    operator bool() const { return read(); }
-
-    void next(bool val) {
-        next_val = val ? 1 : 0;
-        pending = true;
+    explicit Signal(uint8_t* ptr) : ptr_(ptr), prev_val_(*ptr) {
+        SignalRegistry::all().push_back(this);
     }
 
+    bool read() const { return *ptr_ != 0; }
+    operator bool() const { return read(); }
+    void next(bool val) { next_val_ = val ? 1 : 0; pending_ = true; }
+
+private:
+    uint8_t* ptr_;
+    uint8_t store_{};
+    uint8_t prev_val_;
+    uint8_t next_val_;
+    bool pending_ = false;
+    bool dirty_ = false;
+    bool posedge_flag_ = false;
+    bool negedge_flag_ = false;
+
     void commit() override {
-        if (pending) {
-            prev_val = *ptr;
-            *ptr = next_val;
-            if (!prev_val && *ptr) posedge_flag = true;
-            if (prev_val && !*ptr) negedge_flag = true;
-            dirty = (prev_val != *ptr);
-            pending = false;
+        if (pending_) {
+            prev_val_ = *ptr_;
+            *ptr_ = next_val_;
+            if (!prev_val_ && *ptr_) posedge_flag_ = true;
+            if (prev_val_ && !*ptr_) negedge_flag_ = true;
+            dirty_ = (prev_val_ != *ptr_);
+            pending_ = false;
         }
     }
 
-    bool is_dirty() const override { return dirty; }
-    void clear_dirty() override { dirty = false; }
-    bool had_posedge() const override { return posedge_flag; }
-    bool had_negedge() const override { return negedge_flag; }
-
-    void clear_edge_flags() override {
-        posedge_flag = false;
-        negedge_flag = false;
-    }
-
-private:
-    uint8_t* ptr;
-    uint8_t  prev_val;
-    uint8_t  next_val;
-    bool pending = false;
-    bool dirty  = false;
-    bool posedge_flag = false;
-    bool negedge_flag = false;
+    bool is_dirty() const override { return dirty_; }
+    void clear_dirty() override { dirty_ = false; }
+    bool had_posedge() const override { return posedge_flag_; }
+    bool had_negedge() const override { return negedge_flag_; }
+    void clear_edge_flags() override { posedge_flag_ = false; negedge_flag_ = false; }
 };
+
+namespace detail {
 
 template <typename T>
 class Posedge {
     static_assert(sizeof(T) <= 1, "posedge/negedge supports 1-byte signals only");
+    friend class ::corosim::Engine;
+
 public:
     explicit Posedge(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
+
     void await_suspend(std::coroutine_handle<> h) {
-        detail::register_edge_watcher(sig_, POSEDGE, h);
+        register_edge_watcher(static_cast<SignalBase*>(sig_), TriggerInfo::POSEDGE, h);
     }
+
     void await_resume() noexcept {}
 
-    Signal<T>& signal() const { return *sig_; }
+    TriggerInfo trigger_info() const {
+        return {TriggerInfo::POSEDGE, static_cast<SignalBase*>(sig_), 0};
+    }
 
 private:
     Signal<T>* sig_;
@@ -207,16 +217,22 @@ private:
 template <typename T>
 class Negedge {
     static_assert(sizeof(T) <= 1, "posedge/negedge supports 1-byte signals only");
+    friend class ::corosim::Engine;
+
 public:
     explicit Negedge(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
+
     void await_suspend(std::coroutine_handle<> h) {
-        detail::register_edge_watcher(sig_, NEGEDGE, h);
+        register_edge_watcher(static_cast<SignalBase*>(sig_), TriggerInfo::NEGEDGE, h);
     }
+
     void await_resume() noexcept {}
 
-    Signal<T>& signal() const { return *sig_; }
+    TriggerInfo trigger_info() const {
+        return {TriggerInfo::NEGEDGE, static_cast<SignalBase*>(sig_), 0};
+    }
 
 private:
     Signal<T>* sig_;
@@ -224,28 +240,36 @@ private:
 
 template <typename T>
 class Change {
+    friend class ::corosim::Engine;
+
 public:
     explicit Change(const Signal<T>& sig) : sig_(const_cast<Signal<T>*>(&sig)) {}
 
     bool await_ready() const noexcept { return false; }
+
     void await_suspend(std::coroutine_handle<> h) {
-        detail::register_edge_watcher(sig_, CHANGE, h);
+        register_edge_watcher(static_cast<SignalBase*>(sig_), TriggerInfo::CHANGE, h);
     }
+
     void await_resume() noexcept {}
 
-    Signal<T>& signal() const { return *sig_; }
+    TriggerInfo trigger_info() const {
+        return {TriggerInfo::CHANGE, static_cast<SignalBase*>(sig_), 0};
+    }
 
 private:
     Signal<T>* sig_;
 };
 
-template <typename T>
-Posedge<T> posedge(const Signal<T>& sig) { return Posedge<T>(sig); }
+} // namespace detail
 
 template <typename T>
-Negedge<T> negedge(const Signal<T>& sig) { return Negedge<T>(sig); }
+detail::Posedge<T> posedge(const Signal<T>& sig) { return detail::Posedge<T>(sig); }
 
 template <typename T>
-Change<T> change(const Signal<T>& sig) { return Change<T>(sig); }
+detail::Negedge<T> negedge(const Signal<T>& sig) { return detail::Negedge<T>(sig); }
+
+template <typename T>
+detail::Change<T> change(const Signal<T>& sig) { return detail::Change<T>(sig); }
 
 } // namespace corosim

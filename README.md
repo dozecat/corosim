@@ -17,10 +17,9 @@
 | **Clock-edge trigger** | `sim.always(posedge(clk), fn)` | Auto-repeat process on rising edge |
 | **Combinational trigger** | `sim.always_comb(fn)` | Fire on any input change (delta iteration) |
 | **Delay trigger** | `sim.always(delay(n), fn)` | Fire every `n` time units |
-| **Coroutine task** | `sim.task(fn)` | One-shot coroutine with internal `co_await` |
-| **Wait N cycles** | `co_await clock_cycles(clk, n)` | Suspend for `n` clock edges |
-| **Event sync** | `Event::wait()` / `Event::set()` | Manual handshake between processes |
-| **Multi-event wait** | `co_await first(evt0, evt1, w)` | Resume when any event fires |
+| **Coroutine process** | `sim.proc(fn, args...)` | Coroutine process with internal `co_await` |
+| **Multi-condition wait** | `co_await any(triggers...)` | Wait for the first of multiple triggers (edge, delay, signal) |
+| **Software signal** | `Signal<bool>()` | Default-constructed signal for cross-process sync |
 | **BFM compat** | `sim.pre_eval(fn)` / `sim.post_eval(fn)` | Hook into eval cycle (vaxivip BFM) |
 
 ## 🚀 Quick Start
@@ -51,9 +50,11 @@ gtkwave waveform.vcd
 
 ### Signal
 ```cpp
-Signal<uint8_t> sig(&top->sig_field);
+Signal<uint8_t> sig(&top->sig_field);  // bind to Verilator signal
 
-sig.next(val);   // non-blocking assignment (=)
+Signal<bool> flag;                      // software-only signal (no Verilator binding)
+
+sig.next(val);   // non-blocking assignment
 sig.read();      // read current value
 auto v = sig;    // implicit read
 ```
@@ -90,8 +91,8 @@ sim.always_comb([&] {
     y.next(a.read() & b.read());
 });
 
-// One-shot coroutine task
-sim.task([&]() -> Task { return reset_proc(&rst, &wr_clk); });
+// Coroutine process
+sim.proc(reset_proc, &rst, &wr_clk);
 ```
 
 ### Coroutine Primitives
@@ -100,34 +101,41 @@ sim.task([&]() -> Task { return reset_proc(&rst, &wr_clk); });
 // Standalone coroutine function
 Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
     rst->next(1);
-    co_await clock_cycles(*clk, 5);   // wait 5 posedges
+    for (int i = 0; i < 5; i++) co_await posedge(*clk);   // wait 5 posedges
     rst->next(0);
 }
 
 // Inside another coroutine:
 co_await delay(30);                   // wait 30 time units
 co_await posedge(clk);                // wait for rising edge
-co_await clock_cycles(clk, 10);       // wait 10 clock edges
 
-// Event synchronization
-Event evt;
+// Software signal for cross-process sync
+Signal<bool> flag;
 // ... in process A:
-co_await evt.wait();
+co_await posedge(flag);               // wait for flag
 // ... in process B:
-evt.set();
+flag.next(true);                      // notify
 
-// Multi-event wait
-Event overflow_evt, timeout_evt;
-int winner;
-co_await first(overflow_evt, timeout_evt, winner);
-// winner == 0: overflow_evt fired first
-// winner == 1: timeout_evt fired first
+// Multi-condition wait (any of triggers)
+int w = co_await any(posedge(clk), delay(200));
+// w == 0: posedge(clk) fired first
+// w == 1: delay(200) fired first
 ```
 
 ### vaxivip BFM Compatibility
 ```cpp
 sim.pre_eval([&]  { bfm.update_input(); });
 sim.post_eval([&] { bfm.update_output(); });
+```
+
+### sample_cb / drive_cb
+
+```cpp
+// Phase 2 (before eval): sample DUT outputs
+sim.sample_cb(posedge(clk), [&] { bfm.sample_inputs(); });
+
+// Phase 4 (after eval): drive DUT inputs
+sim.drive_cb(posedge(clk), [&] { bfm.drive_outputs(); });
 ```
 
 ## 📁 Project Structure
@@ -141,7 +149,7 @@ corosim/
 │   ├── signal.hpp              # Signal<T> + edge/change triggers
 │   ├── engine.hpp              # Engine declaration
 │   ├── engine.cpp              # Engine: eval loop + scheduler
-│   └── triggers.hpp            # clock_cycles, Event, first
+│   └── triggers.hpp            # any(): multi-trigger wait
 └── examples/
     └── async_fifo/             # Dual-clock async FIFO
         ├── rtl/                #   RTL source
@@ -180,10 +188,9 @@ MIT License — see [LICENSE](LICENSE).
 | 时钟沿触发 | `sim.always(posedge(clk), fn)` | 上升沿自动重复 |
 | 组合逻辑 | `sim.always_comb(fn)` | 输入变化自动触发（delta 迭代） |
 | 时间触发 | `sim.always(delay(n), fn)` | 每 n 个时间单位触发一次 |
-| 协程任务 | `sim.task(fn)` | 一次性协程，内部用 co_await 自调度 |
-| 等 N 个周期 | `co_await clock_cycles(clk, n)` | 等待 n 个时钟上升沿 |
-| 事件同步 | `Event::wait()` / `Event::set()` | 进程间握手 |
-| 多事件竞争 | `co_await first(evt0, evt1, w)` | 任一事件触发即恢复 |
+| 协程进程 | `sim.proc(fn, args...)` | 支持参数的协程进程，内部用 co_await 自调度 |
+| 多条件等待 | `co_await any(triggers...)` | 多个触发条件中最先到者恢复 |
+| 软件信号 | `Signal<bool>()` | 默认构造信号，用于跨进程同步 |
 | BFM 兼容 | `sim.pre_eval(fn)` / `sim.post_eval(fn)` | 接入 eval 生命周期（vaxivip BFM） |
 
 ## 🚀 快速开始
@@ -214,7 +221,9 @@ gtkwave waveform.vcd
 
 ### 信号
 ```cpp
-Signal<uint8_t> sig(&top->sig_field);
+Signal<uint8_t> sig(&top->sig_field);  // 绑定 Verilator 信号
+
+Signal<bool> flag;                      // 纯软件信号（不绑定 Verilator）
 
 sig.next(val);   // 非阻塞赋值
 sig.read();      // 读当前值
@@ -253,8 +262,8 @@ sim.always_comb([&] {
     y.next(a.read() & b.read());
 });
 
-// 一次性协程任务
-sim.task([&]() -> Task { return reset_proc(&rst, &wr_clk); });
+// 协程进程
+sim.proc(reset_proc, &rst, &wr_clk);
 ```
 
 ### 协程原语
@@ -263,32 +272,41 @@ sim.task([&]() -> Task { return reset_proc(&rst, &wr_clk); });
 // 独立协程函数
 Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
     rst->next(1);
-    co_await clock_cycles(*clk, 5);   // 等 5 个上升沿
+    for (int i = 0; i < 5; i++) co_await posedge(*clk);   // 等 5 个上升沿
     rst->next(0);
 }
 
 // 在另一个协程内部：
 co_await delay(30);                   // 等 30 时间单位
 co_await posedge(clk);                // 等下个上升沿
-co_await clock_cycles(clk, 10);       // 等 10 个时钟沿
 
-// 事件同步
-Event evt;
-co_await evt.wait();    // 等待事件触发
-evt.set();              // 触发放行
+// 软件信号跨进程同步
+Signal<bool> flag;
+// ... 进程 A:
+co_await posedge(flag);               // 等信号
+// ... 进程 B:
+flag.next(true);                      // 通知
 
-// 多事件竞争
-Event overflow_evt, timeout_evt;
-int w;
-co_await first(overflow_evt, timeout_evt, w);
-// w == 0: overflow_evt 先到
-// w == 1: timeout_evt 先到
+// 多条件等待
+int w = co_await any(posedge(clk), delay(200));
+// w == 0: posedge(clk) 先到
+// w == 1: delay(200) 先到
 ```
 
 ### vaxivip BFM 兼容
 ```cpp
 sim.pre_eval([&]  { bfm.update_input(); });
 sim.post_eval([&] { bfm.update_output(); });
+```
+
+### sample_cb / drive_cb
+
+```cpp
+// Phase 2 (eval 前): 采样 DUT 输出
+sim.sample_cb(posedge(clk), [&] { bfm.sample_inputs(); });
+
+// Phase 4 (eval 后): 驱动 DUT 输入
+sim.drive_cb(posedge(clk), [&] { bfm.drive_outputs(); });
 ```
 
 ## 📁 项目结构
@@ -302,7 +320,7 @@ corosim/
 │   ├── signal.hpp              # Signal<T> + 边沿/变化触发器
 │   ├── engine.hpp              # Engine 声明
 │   ├── engine.cpp              # Engine: eval 循环 + 调度器
-│   └── triggers.hpp            # clock_cycles, Event, first
+│   └── triggers.hpp            # any(): 多触发条件等待
 └── examples/
     └── async_fifo/             # 双时钟域异步 FIFO
         ├── rtl/                #   RTL 代码
