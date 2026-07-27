@@ -10,6 +10,7 @@ class Proc {
 public:
     struct promise_type {
         std::coroutine_handle<> continuation;
+        std::exception_ptr exception;
 
         Proc get_return_object() noexcept {
             return Proc(std::coroutine_handle<promise_type>::from_promise(*this));
@@ -27,7 +28,7 @@ public:
         std::suspend_always initial_suspend() noexcept { return {}; }
         FinalAwaiter final_suspend() noexcept { return {}; }
         void return_void() {}
-        void unhandled_exception() { std::terminate(); }
+        void unhandled_exception() { exception = std::current_exception(); }
     };
 
     Proc(std::coroutine_handle<promise_type> h) noexcept : handle_(h) {}
@@ -42,9 +43,8 @@ public:
         return *this;
     }
 
-    ~Proc() { if (handle_) handle_.destroy(); }
+    ~Proc() { if (handle_ && !handle_.done()) handle_.destroy(); }
 
-    // awaiter interface (for co_await Proc)
     bool await_ready() const noexcept { return done(); }
     void await_suspend(std::coroutine_handle<> h) noexcept {
         handle_.promise().continuation = h;
@@ -52,19 +52,13 @@ public:
     }
     void await_resume() noexcept {}
 
-private:
-    friend class Engine;
-    std::coroutine_handle<promise_type> handle_;
     void resume() { if (handle_ && !handle_.done()) handle_.resume(); }
     bool done() const { return !handle_ || handle_.done(); }
+    std::coroutine_handle<> void_handle() const { return handle_; }
+    std::exception_ptr get_exception() const { return handle_ ? handle_.promise().exception : nullptr; }
+
+private:
+    std::coroutine_handle<promise_type> handle_;
 };
-
-namespace detail {
-void register_proc(std::function<Proc()> fn);
-}
-
-inline void proc(std::function<Proc()> fn) {
-    detail::register_proc(std::move(fn));
-}
 
 } // namespace corosim

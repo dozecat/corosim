@@ -6,7 +6,7 @@
 
 using namespace corosim;
 
-Proc reset_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk) {
+static Proc reset_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk) {
     std::printf("[clock_cycles] reset hold for 3 clocks\n");
     rst->next(1);
     for (int i = 0; i < 3; i++) co_await posedge(*wr_clk);
@@ -14,7 +14,7 @@ Proc reset_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk) {
     std::printf("[clock_cycles] reset done\n");
 }
 
-Proc write_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk,
+static Proc write_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk,
                 Signal<bool>* wr_en, Signal<uint8_t>* wr_data,
                 Signal<bool>* wr_full, Signal<bool>* go) {
     co_await posedge(*go);
@@ -30,6 +30,17 @@ Proc write_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk,
     }
 }
 
+static Proc go_trigger(Signal<bool>* g) {
+    co_await delay(25);
+    std::printf("[Event] go.set()\n");
+    g->next(true);
+}
+
+static Proc timeout_trigger(Signal<bool>* t) {
+    co_await delay(200);
+    t->next(true);
+}
+
 int main(int argc, char* argv[]) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -39,27 +50,25 @@ int main(int argc, char* argv[]) {
     top.trace(&tfp, 99);
     tfp.open("waveform.vcd");
 
-    Signal<bool>     rst(&top.rst);
-    Signal<uint8_t>  wr_clk(&top.wr_clk);
-    Signal<uint8_t>  wr_data(&top.wr_data);
-    Signal<bool>     wr_en(&top.wr_en);
-    Signal<bool>     wr_full(&top.wr_full);
-    Signal<bool>     wr_overflow(&top.wr_overflow);
-    Signal<uint8_t>  rd_clk(&top.rd_clk);
-    Signal<bool>     rd_en(&top.rd_en);
-    Signal<bool>     rd_empty(&top.rd_empty);
+    Kernel sim;
 
-    Engine sim;
+    Signal<bool>     rst(sim.signals(), &top.rst);
+    Signal<uint8_t>  wr_clk(sim.signals(), &top.wr_clk);
+    Signal<uint8_t>  wr_data(sim.signals(), &top.wr_data);
+    Signal<bool>     wr_en(sim.signals(), &top.wr_en);
+    Signal<bool>     wr_full(sim.signals(), &top.wr_full);
+    Signal<bool>     wr_overflow(sim.signals(), &top.wr_overflow);
+    Signal<uint8_t>  rd_clk(sim.signals(), &top.rd_clk);
+    Signal<bool>     rd_en(sim.signals(), &top.rd_en);
+    Signal<bool>     rd_empty(sim.signals(), &top.rd_empty);
 
     always(delay(2),  [&] { wr_clk.next(!wr_clk.read()); });
     always(delay(10), [&] { rd_clk.next(!rd_clk.read()); });
 
-    Signal<bool> go, overflow_evt, timeout_evt;
+    Signal<bool> go(sim.signals()), overflow_evt(sim.signals()), timeout_evt(sim.signals());
 
     proc([&]() -> Proc { return reset_proc(&rst, &wr_clk); });
-    proc([&]() -> Proc {
-        return write_proc(&rst, &wr_clk, &wr_en, &wr_data, &wr_full, &go);
-    });
+    proc([&]() -> Proc { return write_proc(&rst, &wr_clk, &wr_en, &wr_data, &wr_full, &go); });
 
     always(posedge(rd_clk), [&] {
         rd_en.next(!rd_empty.read() ? 1 : 0);
@@ -68,21 +77,12 @@ int main(int argc, char* argv[]) {
     int overflow_cnt = 0;
     always_comb([&] { if (wr_overflow.read()) overflow_cnt++; });
 
-    // standalone function avoids Apple Clang coroutine capture bug
-    static auto go_trigger = [](Signal<bool>* g) -> Proc {
-        co_await delay(25);
-        std::printf("[Event] go.set()\n");
-        g->next(true);
-    };
     proc([&]() -> Proc { return go_trigger(&go); });
 
     always(posedge(wr_clk), [&] {
         if (wr_overflow.read()) overflow_evt.next(true);
     });
-    static auto timeout_trigger = [](Signal<bool>* t) -> Proc {
-        co_await delay(200);
-        t->next(true);
-    };
+
     proc([&]() -> Proc { return timeout_trigger(&timeout_evt); });
 
     sim.init(&top, [&](sim_time t) { tfp.dump(t); });

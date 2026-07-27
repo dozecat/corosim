@@ -1,10 +1,13 @@
 #pragma once
 
 #include <array>
+#include <coroutine>
 #include <utility>
 
-#include "types.hpp"
-#include "engine.hpp"
+#include "../core/types.hpp"
+#include "internal.hpp"
+#include "edge_awaiter.hpp"
+#include "delay_awaiter.hpp"
 
 namespace corosim {
 
@@ -18,19 +21,7 @@ auto any(Triggers&&... triggers) {
         bool await_ready() noexcept { return false; }
 
         void await_suspend(std::coroutine_handle<> h) noexcept {
-            auto& e = Engine::current();
-            for (auto& info : infos) {
-                switch (info.type) {
-                case TriggerInfo::POSEDGE:
-                case TriggerInfo::NEGEDGE:
-                case TriggerInfo::CHANGE:
-                    e.watch_edge(info.sig, info.type, h);
-                    break;
-                case TriggerInfo::DELAY:
-                    e.watch_delay(h, e.now() + info.interval);
-                    break;
-                }
-            }
+            detail::register_compound_wait(h, infos.data(), infos.size());
         }
 
         void await_resume() noexcept {}
