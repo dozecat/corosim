@@ -1,19 +1,22 @@
 #include "scheduler.hpp"
+#include "../process/process_manager.hpp"
+#include "../process/process.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 namespace corosim {
 
-TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h) {
+TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
     TimerId tid{next_timer_id_++};
-    timed_queue_.push({deadline, tid, h});
+    timed_queue_.push({deadline, tid, h, wid, fired, fire_idx});
     return tid;
 }
 
-void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId wid) {
+void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
     if (monitor_processing_) {
-        pending_monitor_.push_back({sig, edge, h, wid});
+        pending_monitor_.push_back({sig, edge, h, wid, fired, fire_idx});
     } else {
-        monitor_queue_.push_back({sig, edge, h, wid});
+        monitor_queue_.push_back({sig, edge, h, wid, fired, fire_idx});
     }
 }
 
@@ -29,8 +32,8 @@ void Scheduler::process_monitor_queue() {
     kept.reserve(monitor_queue_.size());
 
     for (auto& entry : monitor_queue_) {
-        if (!entry.wid.valid()) continue;
         if (!entry.handle || entry.handle.done()) continue;
+        if (!entry.wid || !entry.wid->valid()) continue;
 
         bool triggered = false;
         switch (entry.edge) {
@@ -41,13 +44,18 @@ void Scheduler::process_monitor_queue() {
             triggered = entry.sig->had_negedge();
             break;
         case TriggerInfo::CHANGE:
-            triggered = entry.sig->is_dirty();
+            triggered = entry.sig->has_changed();
             break;
         default:
             break;
         }
         if (triggered) {
-            entry.wid.invalidate();
+            if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
+            if (proc_mgr_) {
+                auto* proc = proc_mgr_->find_process(entry.handle);
+                if (proc) proc->waits().cancel_others(entry.wid);
+            }
+            entry.wid->invalidate();
             entry.handle.resume();
         } else {
             kept.push_back(entry);
@@ -60,55 +68,70 @@ void Scheduler::process_monitor_queue() {
 }
 
 void Scheduler::run_one_tick() {
+    // ── Write: timed resume + commit + pre_eval + eval ──
     while (!timed_queue_.empty() && timed_queue_.top().deadline <= now_) {
         auto entry = timed_queue_.top();
         timed_queue_.pop();
         if (!entry.handle || entry.handle.done()) continue;
+        if (!entry.wid || !entry.wid->valid()) continue;
+        if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
+        if (proc_mgr_) {
+            auto* proc = proc_mgr_->find_process(entry.handle);
+            if (proc) proc->waits().cancel_others(entry.wid);
+        }
         entry.handle.resume();
     }
 
-    for (auto& h : tick_hooks_) if (h) h();
     sigs_.commit_all();
-
     for (auto& h : pre_eval_hooks_) if (h) h();
-
     if (eval_fn_) eval_fn_();
 
+    // ── Read: post_eval + commit + delta + monitor ──
     for (auto& h : post_eval_hooks_) if (h) h();
     sigs_.commit_all();
-    for (auto& h : commit_eval_hooks_) if (h) h();
 
     for (size_t iteration = 0; ; iteration++) {
         bool dirty = false;
-
         for (auto& cb : delta_callbacks_) {
             if (cb) cb();
         }
         sigs_.commit_all();
-
         for (auto* sig : sigs_.dirty_signals()) {
             if (sig->is_dirty()) {
                 dirty = true;
                 sig->clear_dirty();
             }
         }
-
         if (!dirty) break;
-        if (iteration >= max_delta_) break;
+        if (iteration >= max_delta_)
+            throw std::runtime_error("Delta oscillation: max iterations exceeded");
     }
 
     process_monitor_queue();
 
-    for (auto& h : tick_end_hooks_) if (h) h();
+    // ── Flip + Next ──
     sigs_.clear_edge_flags();
-
     if (dump_fn_) dump_fn_(now_);
 }
 
 void Scheduler::run(sim_time duration) {
     run_one_tick();
-    for (now_ = 1; now_ <= duration; now_++) {
+    now_ = 1;
+    while (now_ <= duration) {
+        // Pop cancelled entries from heap top before reading deadline
+        while (!timed_queue_.empty() && timed_queue_.top().wid && !timed_queue_.top().wid->valid()) {
+            timed_queue_.pop();
+        }
+        // Jump to next timed event to avoid empty tick iterations
+        if (!timed_queue_.empty()) {
+            sim_time next_deadline = timed_queue_.top().deadline;
+            if (next_deadline > now_ && next_deadline <= duration) {
+                now_ = next_deadline;
+            }
+        }
+        if (now_ > duration) break;
         run_one_tick();
+        now_++;
     }
 }
 

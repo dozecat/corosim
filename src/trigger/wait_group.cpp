@@ -1,44 +1,37 @@
 #include "wait_group.hpp"
-#include <algorithm>
 
 namespace corosim {
 
-WaitId WaitGroup::add_edge_watch(SignalBase* sig, TriggerType edge) {
-    WaitId wid{++next_id_, owner_.generation, edge, sig};
-    entries_.push_back({wid, true});
-    return wid;
+WaitId* WaitGroup::add_edge_watch(SignalBase* sig, TriggerType edge) {
+    entries_.push_back({WaitId{++next_id_, owner_.generation, edge, sig}, true});
+    return &entries_.back().id;
 }
 
-WaitId WaitGroup::add_delay_watch(TimerId timer) {
-    WaitId wid{++next_id_, owner_.generation, TriggerType::DELAY, timer};
-    entries_.push_back({wid, true});
-    return wid;
+WaitId* WaitGroup::add_delay_watch(TimerId timer) {
+    entries_.push_back({WaitId{++next_id_, owner_.generation, TriggerType::DELAY, timer}, true});
+    return &entries_.back().id;
 }
 
 void WaitGroup::cancel_all() {
     for (auto& e : entries_) {
-        e.active = false;
         e.id.invalidate();
     }
-    entries_.clear();
+    // Never erase: scheduler holds WaitId* pointers into this list.
+    // Entries are destroyed with the WaitGroup when Process is destroyed.
 }
 
-void WaitGroup::cancel_others(WaitId keep) {
+void WaitGroup::cancel_others(WaitId* keep) {
     for (auto& e : entries_) {
-        if (e.id.id != keep.id) {
-            e.active = false;
+        if (&e.id != keep) {
             e.id.invalidate();
         }
     }
-    entries_.erase(
-        std::remove_if(entries_.begin(), entries_.end(),
-                       [](const Entry& e) { return !e.active; }),
-        entries_.end());
+    // Never erase: scheduler holds WaitId* pointers into this list.
 }
 
 bool WaitGroup::any_active() const {
     for (auto& e : entries_) {
-        if (e.active) return true;
+        if (e.id.valid()) return true;
     }
     return false;
 }

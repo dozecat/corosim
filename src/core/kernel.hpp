@@ -3,6 +3,7 @@
 #include <coroutine>
 #include <functional>
 #include <memory>
+#include <cassert>
 
 #include "types.hpp"
 #include "../signal/signal_registry.hpp"
@@ -43,12 +44,9 @@ public:
 
     sim_time now() const { return sched_.now(); }
 
-    template <typename Fn> void on_tick(Fn&& fn) { sched_.on_tick(std::forward<Fn>(fn)); }
     template <typename Fn> void on_pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
     template <typename Fn> void on_post_eval(Fn&& fn) { sched_.on_post_eval(std::forward<Fn>(fn)); }
-    template <typename Fn> void on_commit_eval(Fn&& fn) { sched_.on_commit_eval(std::forward<Fn>(fn)); }
     template <typename Fn> void on_comb(Fn&& fn) { sched_.on_comb(std::forward<Fn>(fn)); }
-    template <typename Fn> void on_tick_end(Fn&& fn) { sched_.on_tick_end(std::forward<Fn>(fn)); }
     bool had_edge(SignalBase* sig, TriggerType edge) const { return sched_.had_edge(sig, edge); }
 
     template <typename Fn>
@@ -58,8 +56,8 @@ public:
 
     void run(sim_time duration);
 
-    void register_edge_wait(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h);
-    void register_delay_wait(std::coroutine_handle<> h, sim_time interval);
+    void register_edge_wait(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, int fire_idx = -1, int* fired = nullptr);
+    void register_delay_wait(std::coroutine_handle<> h, sim_time interval, int fire_idx = -1, int* fired = nullptr);
 
 private:
     SignalRegistry signals_;

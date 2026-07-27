@@ -23,4 +23,5 @@
 #include "api/always.hpp"
 #include "api/always_comb.hpp"
 #include "api/proc.hpp"
+#include "api/initial.hpp"
 #include "api/eval_hooks.hpp"

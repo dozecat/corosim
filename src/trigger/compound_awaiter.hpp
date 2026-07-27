@@ -17,14 +17,15 @@ auto any(Triggers&&... triggers) {
 
     struct Awaiter {
         std::array<TriggerInfo, sizeof...(Triggers)> infos;
+        int which_ = -1;
 
         bool await_ready() noexcept { return false; }
 
         void await_suspend(std::coroutine_handle<> h) noexcept {
-            detail::register_compound_wait(h, infos.data(), infos.size());
+            detail::register_compound_wait(h, infos.data(), infos.size(), &which_);
         }
 
-        void await_resume() noexcept {}
+        int await_resume() noexcept { return which_; }
     };
 
     return Awaiter{infos};

@@ -32,6 +32,7 @@ public:
     Process* find_process(std::coroutine_handle<> h) const;
     size_t active_count() const;
     void cleanup_finished();
+    std::exception_ptr collect_exceptions();
 
 private:
     uint64_t next_pid_ = 1;

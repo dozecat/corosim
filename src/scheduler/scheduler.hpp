@@ -10,6 +10,8 @@
 
 namespace corosim {
 
+class ProcessManager;
+
 class Scheduler {
 public:
     explicit Scheduler(SignalRegistry& sigs) : sigs_(sigs) {}
@@ -17,38 +19,28 @@ public:
     void set_eval_fn(std::function<void()> fn) { eval_fn_ = std::move(fn); }
     void set_dump_fn(std::function<void(sim_time)> fn) { dump_fn_ = std::move(fn); }
     void set_max_delta_iterations(size_t n) { max_delta_ = n; }
+    void set_proc_mgr(ProcessManager* pm) { proc_mgr_ = pm; }
 
     sim_time now() const { return now_; }
 
     template <typename Fn>
-    void on_tick(Fn&& fn) { tick_hooks_.emplace_back(std::forward<Fn>(fn)); }
-
-    template <typename Fn>
     void on_pre_eval(Fn&& fn) { pre_eval_hooks_.emplace_back(std::forward<Fn>(fn)); }
-
     template <typename Fn>
     void on_post_eval(Fn&& fn) { post_eval_hooks_.emplace_back(std::forward<Fn>(fn)); }
-
-    template <typename Fn>
-    void on_commit_eval(Fn&& fn) { commit_eval_hooks_.emplace_back(std::forward<Fn>(fn)); }
-
     template <typename Fn>
     void on_comb(Fn&& fn) { delta_callbacks_.emplace_back(std::forward<Fn>(fn)); }
-
-    template <typename Fn>
-    void on_tick_end(Fn&& fn) { tick_end_hooks_.emplace_back(std::forward<Fn>(fn)); }
 
     bool had_edge(SignalBase* sig, TriggerType edge) const {
         switch (edge) {
         case TriggerInfo::POSEDGE: return sig->had_posedge();
         case TriggerInfo::NEGEDGE: return sig->had_negedge();
-        case TriggerInfo::CHANGE:  return sig->is_dirty();
+        case TriggerInfo::CHANGE:  return sig->has_changed();
         default: return false;
         }
     }
 
-    TimerId schedule_timer(sim_time deadline, std::coroutine_handle<> h);
-    void schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId wid);
+    TimerId schedule_timer(sim_time deadline, std::coroutine_handle<> h, WaitId* wid, int fire_idx = -1, int* fired = nullptr);
+    void schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId* wid, int fire_idx = -1, int* fired = nullptr);
     void schedule_delta(std::function<void()> callback);
 
     void run(sim_time duration);
@@ -58,11 +50,15 @@ private:
     void process_monitor_queue();
 
     SignalRegistry& sigs_;
+    ProcessManager* proc_mgr_ = nullptr;
 
     struct TimedEntry {
         sim_time deadline;
         TimerId timer_id;
         std::coroutine_handle<> handle;
+        WaitId* wid = nullptr;
+        int* fire_idx = nullptr;
+        int fire_value = -1;
         bool operator>(const TimedEntry& o) const { return deadline > o.deadline; }
     };
     std::priority_queue<TimedEntry, std::vector<TimedEntry>, std::greater<>> timed_queue_;
@@ -72,18 +68,17 @@ private:
         SignalBase* sig;
         TriggerType edge;
         std::coroutine_handle<> handle;
-        WaitId wid;
+        WaitId* wid = nullptr;
+        int* fire_idx = nullptr;
+        int fire_value = -1;
     };
     std::vector<MonitorEntry> monitor_queue_;
     std::vector<MonitorEntry> pending_monitor_;
     bool monitor_processing_ = false;
 
     std::vector<std::function<void()>> delta_callbacks_;
-    std::vector<std::function<void()>> tick_hooks_;
     std::vector<std::function<void()>> pre_eval_hooks_;
     std::vector<std::function<void()>> post_eval_hooks_;
-    std::vector<std::function<void()>> commit_eval_hooks_;
-    std::vector<std::function<void()>> tick_end_hooks_;
 
     std::function<void()> eval_fn_;
     std::function<void(sim_time)> dump_fn_;

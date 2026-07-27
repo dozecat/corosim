@@ -43,7 +43,7 @@ public:
         return *this;
     }
 
-    ~Proc() { if (handle_ && !handle_.done()) handle_.destroy(); }
+    ~Proc() { if (handle_) handle_.destroy(); }
 
     bool await_ready() const noexcept { return done(); }
     void await_suspend(std::coroutine_handle<> h) noexcept {

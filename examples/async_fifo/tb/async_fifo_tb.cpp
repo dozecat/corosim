@@ -67,8 +67,8 @@ int main(int argc, char* argv[]) {
 
     Signal<bool> go(sim.signals()), overflow_evt(sim.signals()), timeout_evt(sim.signals());
 
-    proc([&]() -> Proc { return reset_proc(&rst, &wr_clk); });
-    proc([&]() -> Proc { return write_proc(&rst, &wr_clk, &wr_en, &wr_data, &wr_full, &go); });
+    proc(reset_proc, &rst, &wr_clk);
+    proc(write_proc, &rst, &wr_clk, &wr_en, &wr_data, &wr_full, &go);
 
     always(posedge(rd_clk), [&] {
         rd_en.next(!rd_empty.read() ? 1 : 0);
@@ -77,13 +77,13 @@ int main(int argc, char* argv[]) {
     int overflow_cnt = 0;
     always_comb([&] { if (wr_overflow.read()) overflow_cnt++; });
 
-    proc([&]() -> Proc { return go_trigger(&go); });
+    proc(go_trigger, &go);
 
     always(posedge(wr_clk), [&] {
         if (wr_overflow.read()) overflow_evt.next(true);
     });
 
-    proc([&]() -> Proc { return timeout_trigger(&timeout_evt); });
+    proc(timeout_trigger, &timeout_evt);
 
     sim.init(&top, [&](sim_time t) { tfp.dump(t); });
     sim.run(500);

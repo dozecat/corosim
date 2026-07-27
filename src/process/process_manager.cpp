@@ -1,4 +1,5 @@
 #include "process_manager.hpp"
+#include "process.hpp"
 
 namespace corosim {
 
@@ -27,7 +28,7 @@ void ProcessManager::cleanup_finished() {
     auto it = processes_.begin();
     while (it != processes_.end()) {
         if (!it->second || it->second->done()) {
-            if (it->second && !it->second->done()) {
+            if (it->second) {
                 handle_map_.erase(it->second->void_handle().address());
             }
             it = processes_.erase(it);
@@ -35,6 +36,16 @@ void ProcessManager::cleanup_finished() {
             ++it;
         }
     }
+}
+
+std::exception_ptr ProcessManager::collect_exceptions() {
+    for (auto& [id, proc] : processes_) {
+        if (proc && proc->done()) {
+            auto ep = proc->get_exception();
+            if (ep) return ep;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace corosim
