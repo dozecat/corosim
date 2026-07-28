@@ -1,6 +1,4 @@
 #include "scheduler.hpp"
-#include "../process/process_manager.hpp"
-#include "../process/process.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -51,10 +49,7 @@ void Scheduler::process_monitor_queue() {
         }
         if (triggered) {
             if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
-            if (proc_mgr_) {
-                auto* proc = proc_mgr_->find_process(entry.handle);
-                if (proc) proc->waits().cancel_others(entry.wid);
-            }
+            if (cancel_others_fn_) cancel_others_fn_(entry.handle, entry.wid);
             entry.wid->invalidate();
             entry.handle.resume();
         } else {
@@ -75,10 +70,7 @@ void Scheduler::run_one_tick() {
         if (!entry.handle || entry.handle.done()) continue;
         if (!entry.wid || !entry.wid->valid()) continue;
         if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
-        if (proc_mgr_) {
-            auto* proc = proc_mgr_->find_process(entry.handle);
-            if (proc) proc->waits().cancel_others(entry.wid);
-        }
+        if (cancel_others_fn_) cancel_others_fn_(entry.handle, entry.wid);
         entry.handle.resume();
     }
 
@@ -118,11 +110,9 @@ void Scheduler::run(sim_time duration) {
     run_one_tick();
     now_ = 1;
     while (now_ <= duration) {
-        // Pop cancelled entries from heap top before reading deadline
         while (!timed_queue_.empty() && timed_queue_.top().wid && !timed_queue_.top().wid->valid()) {
             timed_queue_.pop();
         }
-        // Jump to next timed event to avoid empty tick iterations
         if (!timed_queue_.empty()) {
             sim_time next_deadline = timed_queue_.top().deadline;
             if (next_deadline > now_ && next_deadline <= duration) {

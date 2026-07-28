@@ -6,14 +6,14 @@
 
 namespace corosim {
 
-class Proc {
+class Task {
 public:
     struct promise_type {
         std::coroutine_handle<> continuation;
         std::exception_ptr exception;
 
-        Proc get_return_object() noexcept {
-            return Proc(std::coroutine_handle<promise_type>::from_promise(*this));
+        Task get_return_object() noexcept {
+            return Task(std::coroutine_handle<promise_type>::from_promise(*this));
         }
 
         struct FinalAwaiter {
@@ -31,10 +31,10 @@ public:
         void unhandled_exception() { exception = std::current_exception(); }
     };
 
-    Proc(std::coroutine_handle<promise_type> h) noexcept : handle_(h) {}
-    Proc(Proc&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
+    Task(std::coroutine_handle<promise_type> h) noexcept : handle_(h) {}
+    Task(Task&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
 
-    Proc& operator=(Proc&& other) noexcept {
+    Task& operator=(Task&& other) noexcept {
         if (this != &other) {
             if (handle_) handle_.destroy();
             handle_ = other.handle_;
@@ -43,7 +43,7 @@ public:
         return *this;
     }
 
-    ~Proc() { if (handle_) handle_.destroy(); }
+    ~Task() { if (handle_) handle_.destroy(); }
 
     bool await_ready() const noexcept { return done(); }
     void await_suspend(std::coroutine_handle<> h) noexcept {

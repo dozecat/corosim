@@ -5,13 +5,18 @@
 #include <memory>
 #include <unordered_map>
 
-#include "proc.hpp"
+#include "task.hpp"
 #include "process.hpp"
+#include "core/detail/context.hpp"
 
 namespace corosim {
 
+class Kernel;
+
 class ProcessManager {
 public:
+    void set_kernel(Kernel* k) { kernel_ = k; }
+
     template <typename Fn>
     Process* add(Fn&& fn) {
         auto task = std::forward<Fn>(fn)();
@@ -19,11 +24,12 @@ public:
         auto proc = std::make_unique<Process>(id, std::move(task));
         auto* raw = proc.get();
         processes_[id.id] = std::move(proc);
-        // Register handle BEFORE first resume
         handle_map_[raw->void_handle().address()] = raw;
+        detail::map_handle(raw->void_handle(), kernel_);
         raw->resume();
         if (!raw->done()) {
             handle_map_[raw->void_handle().address()] = raw;
+            detail::map_handle(raw->void_handle(), kernel_);
         }
         return raw;
     }
@@ -36,6 +42,7 @@ public:
 
 private:
     uint64_t next_pid_ = 1;
+    Kernel* kernel_ = nullptr;
     std::unordered_map<void*, Process*> handle_map_;
     std::unordered_map<uint64_t, std::unique_ptr<Process>> processes_;
 };

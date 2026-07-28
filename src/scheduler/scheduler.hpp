@@ -4,13 +4,11 @@
 #include <functional>
 #include <queue>
 #include <vector>
-#include "../core/types.hpp"
-#include "../signal/signal_base.hpp"
-#include "../signal/signal_registry.hpp"
+#include "core/types.hpp"
+#include "signal/signal_base.hpp"
+#include "signal/signal_registry.hpp"
 
 namespace corosim {
-
-class ProcessManager;
 
 class Scheduler {
 public:
@@ -19,7 +17,7 @@ public:
     void set_eval_fn(std::function<void()> fn) { eval_fn_ = std::move(fn); }
     void set_dump_fn(std::function<void(sim_time)> fn) { dump_fn_ = std::move(fn); }
     void set_max_delta_iterations(size_t n) { max_delta_ = n; }
-    void set_proc_mgr(ProcessManager* pm) { proc_mgr_ = pm; }
+    void set_cancel_fn(std::function<void(std::coroutine_handle<>, WaitId*)> fn) { cancel_others_fn_ = std::move(fn); }
 
     sim_time now() const { return now_; }
 
@@ -50,7 +48,8 @@ private:
     void process_monitor_queue();
 
     SignalRegistry& sigs_;
-    ProcessManager* proc_mgr_ = nullptr;
+
+    std::function<void(std::coroutine_handle<>, WaitId*)> cancel_others_fn_;
 
     struct TimedEntry {
         sim_time deadline;

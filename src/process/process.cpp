@@ -4,7 +4,7 @@ namespace corosim {
 
 Process::~Process() {
     wait_group_.cancel_all();
-    // Proc destructor handles coroutine cleanup
+    // Task destructor handles coroutine cleanup
 }
 
 void Process::resume() {

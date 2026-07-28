@@ -5,20 +5,15 @@
 #include <memory>
 #include <cassert>
 
-#include "types.hpp"
-#include "../signal/signal_registry.hpp"
-#include "../scheduler/scheduler.hpp"
-#include "../process/process_manager.hpp"
-#include "../process/proc.hpp"
+#include "core/types.hpp"
+#include "signal/signal_registry.hpp"
+#include "scheduler/scheduler.hpp"
+#include "process/process_manager.hpp"
+#include "process/task.hpp"
+#include "trigger/edge.hpp"
+#include "trigger/delay.hpp"
 
 namespace corosim {
-
-class Kernel;
-
-namespace detail {
-Kernel* current_kernel();
-void set_current_kernel(Kernel* k);
-}
 
 class Kernel {
 public:
@@ -30,29 +25,39 @@ public:
     ProcessManager& proc_mgr() { return proc_mgr_; }
 
     template <typename TOP>
-    void init(TOP* top, std::function<void(sim_time)> dump_fn = nullptr) {
-        dump_fn_ = std::move(dump_fn);
-        top_ = top;
-        sched_.set_eval_fn([top] { top->eval(); });
-        sched_.set_dump_fn([this](sim_time t) {
-            if (top_) set_verilator_time(t);
-            if (dump_fn_) dump_fn_(t);
-        });
-    }
+    void init(TOP* top, std::function<void(sim_time)> dump_fn = nullptr);
 
     void set_verilator_time(sim_time t);
 
     sim_time now() const { return sched_.now(); }
 
-    template <typename Fn> void on_pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
-    template <typename Fn> void on_post_eval(Fn&& fn) { sched_.on_post_eval(std::forward<Fn>(fn)); }
-    template <typename Fn> void on_comb(Fn&& fn) { sched_.on_comb(std::forward<Fn>(fn)); }
+    template <typename Fn> void on_pre_eval(Fn&& fn);
+    template <typename Fn> void on_post_eval(Fn&& fn);
+    template <typename Fn> void on_comb(Fn&& fn);
     bool had_edge(SignalBase* sig, TriggerType edge) const { return sched_.had_edge(sig, edge); }
 
     template <typename Fn>
-    Process* add_process(Fn&& fn) {
-        return proc_mgr_.add(std::forward<Fn>(fn));
-    }
+    Process* add_process(Fn&& fn);
+
+    // ── API ──
+
+    template <typename Trigger, typename Fn>
+    void always(Trigger t, Fn fn);
+
+    template <typename Fn>
+    void always_comb(Fn fn);
+
+    template <typename Fn, typename... Args>
+    void instance(Fn&& fn, Args&&... args);
+
+    template <typename Trigger, typename Fn>
+    void sample(Trigger t, Fn fn);
+
+    template <typename Trigger, typename Fn>
+    void drive(Trigger t, Fn fn);
+
+    template <typename Trigger, typename Device>
+    void device(Trigger t, Device& dev);
 
     void run(sim_time duration);
 

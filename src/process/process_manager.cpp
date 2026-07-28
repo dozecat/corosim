@@ -1,5 +1,6 @@
 #include "process_manager.hpp"
 #include "process.hpp"
+#include "core/detail/context.hpp"
 
 namespace corosim {
 
@@ -7,6 +8,7 @@ void ProcessManager::init_all() {
     for (auto& [id, proc] : processes_) {
         if (proc && proc->active() && !proc->done()) {
             handle_map_[proc->void_handle().address()] = proc.get();
+            detail::map_handle(proc->void_handle(), kernel_);
         }
     }
 }
@@ -29,6 +31,7 @@ void ProcessManager::cleanup_finished() {
     while (it != processes_.end()) {
         if (!it->second || it->second->done()) {
             if (it->second) {
+                detail::unmap_handle(it->second->void_handle());
                 handle_map_.erase(it->second->void_handle().address());
             }
             it = processes_.erase(it);

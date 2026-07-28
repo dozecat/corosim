@@ -1,7 +1,7 @@
 #pragma once
 
 #include <list>
-#include "../core/types.hpp"
+#include "core/types.hpp"
 
 namespace corosim {
 

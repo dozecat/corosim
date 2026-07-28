@@ -1,8 +1,8 @@
 #pragma once
 
 #include <coroutine>
-#include "../core/types.hpp"
-#include "internal.hpp"
+#include "core/types.hpp"
+#include "core/detail/context.hpp"
 
 namespace corosim {
 

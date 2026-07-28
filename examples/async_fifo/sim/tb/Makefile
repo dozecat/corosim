@@ -22,11 +22,11 @@
 MODULE    = async_fifo
 VERILATOR = verilator
 
-RTL_FILES = $(abspath ../rtl/async_fifo.v)
+RTL_FILES = $(abspath ../../rtl/async_fifo.v)
 
 TEST_CPP  = ./async_fifo_tb.cpp
 
-COROSIM_SRC  = $(abspath ../../../src)
+COROSIM_SRC  = $(abspath ../../../../src)
 COROSIM_HPP  = $(shell find $(COROSIM_SRC) -name "*.hpp")
 COROSIM_CPP  = $(shell find $(COROSIM_SRC) -name "*.cpp")
 COROSIM_INC  = -I$(COROSIM_SRC)

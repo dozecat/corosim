@@ -1,4 +1,4 @@
-#include "wait_group.hpp"
+#include "trigger/wait.hpp"
 
 namespace corosim {
 

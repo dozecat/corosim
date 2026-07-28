@@ -1,9 +1,9 @@
 #pragma once
 
 #include <coroutine>
-#include "../core/types.hpp"
-#include "proc.hpp"
-#include "../trigger/wait_group.hpp"
+#include "core/types.hpp"
+#include "process/task.hpp"
+#include "trigger/wait.hpp"
 
 namespace corosim {
 
@@ -11,7 +11,7 @@ enum class ProcessState { ACTIVE, WAITING, DONE, CANCELLED };
 
 class Process {
 public:
-    Process(ProcessId id, Proc&& task)
+    Process(ProcessId id, Task&& task)
         : id_(id), task_(std::move(task)), wait_group_(id) {}
 
     ~Process();
@@ -37,7 +37,7 @@ public:
 
 private:
     ProcessId id_;
-    Proc task_;
+    Task task_;
     ProcessState state_ = ProcessState::ACTIVE;
     WaitGroup wait_group_;
     bool repeating_ = false;

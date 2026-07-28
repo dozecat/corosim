@@ -4,10 +4,10 @@
 #include <coroutine>
 #include <utility>
 
-#include "../core/types.hpp"
-#include "internal.hpp"
-#include "edge_awaiter.hpp"
-#include "delay_awaiter.hpp"
+#include "core/types.hpp"
+#include "core/detail/context.hpp"
+#include "trigger/edge.hpp"
+#include "trigger/delay.hpp"
 
 namespace corosim {
 
