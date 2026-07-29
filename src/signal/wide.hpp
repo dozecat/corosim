@@ -1,3 +1,20 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        wide.hpp
+ * @brief       Signal specialization for Verilator VlWide<N>
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Supports wide HDL vectors via VlWide storage and change-only
+ *              edge flags.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include <cstring>
@@ -7,8 +24,12 @@
 
 namespace corosim {
 
+/**
+ * @brief Signal specialization for Verilator VlWide<N> vectors.
+ * @tparam N Number of 32-bit words in VlWide.
+ */
 template <int N>
-class Signal<VlWide<N>> : private SignalBase {
+class Signal<VlWide<N>> : public SignalBase {
 public:
     explicit Signal(SignalRegistry& reg, VlWide<N>* ptr = nullptr)
         : reg_(&reg) {
@@ -22,7 +43,9 @@ public:
         if (reg_) reg_->unregister_signal(this);
     }
 
+    /** @brief Pointer to committed wide storage words. */
     const uint32_t* read() const { return ptr_->m_storage; }
+    /** @brief Schedule NBA of a full VlWide value. */
     void next(const VlWide<N>& val) { if (!pending_) reg_->mark_pending(this); next_val_ = val; pending_ = true; }
 
     SignalBase* base_ptr() { return this; }

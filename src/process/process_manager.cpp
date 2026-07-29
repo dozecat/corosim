@@ -1,21 +1,26 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        process_manager.cpp
+ * @brief       ProcessManager method implementations
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Lookup, active counting, cleanup, and exception collection.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #include "process_manager.hpp"
 #include "process.hpp"
-#include "core/detail/context.hpp"
 
 namespace corosim {
 
-void ProcessManager::init_all() {
-    for (auto& [id, proc] : processes_) {
-        if (proc && proc->active() && !proc->done()) {
-            handle_map_[proc->void_handle().address()] = proc.get();
-            detail::map_handle(proc->void_handle(), kernel_);
-        }
-    }
-}
-
 Process* ProcessManager::find_process(std::coroutine_handle<> h) const {
-    auto it = handle_map_.find(h.address());
-    return (it != handle_map_.end()) ? it->second : nullptr;
+    return Task::promise_type::from_handle(h).process;
 }
 
 size_t ProcessManager::active_count() const {
@@ -26,14 +31,11 @@ size_t ProcessManager::active_count() const {
     return n;
 }
 
+/** @brief Erase finished or null process entries. */
 void ProcessManager::cleanup_finished() {
     auto it = processes_.begin();
     while (it != processes_.end()) {
         if (!it->second || it->second->done()) {
-            if (it->second) {
-                detail::unmap_handle(it->second->void_handle());
-                handle_map_.erase(it->second->void_handle().address());
-            }
             it = processes_.erase(it);
         } else {
             ++it;
@@ -41,6 +43,7 @@ void ProcessManager::cleanup_finished() {
     }
 }
 
+/** @brief Return the first exception from a finished process, if any. */
 std::exception_ptr ProcessManager::collect_exceptions() {
     for (auto& [id, proc] : processes_) {
         if (proc && proc->done()) {

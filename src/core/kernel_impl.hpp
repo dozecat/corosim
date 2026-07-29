@@ -1,3 +1,19 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        kernel_impl.hpp
+ * @brief       Kernel template method implementations
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Defines always, instance, sample, drive, and eval hooks.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include "core/kernel.hpp"
@@ -25,32 +41,16 @@ inline Task make_always_delay_coro(sim_time interval, Fn fn) {
 
 namespace corosim {
 
-// ── Kernel template members ──
-
-template <typename TOP>
-void Kernel::init(TOP* top, std::function<void(sim_time)> dump_fn) {
-    dump_fn_ = std::move(dump_fn);
-    top_ = top;
-    sched_.set_eval_fn([top] { top->eval(); });
-    sched_.set_dump_fn([this](sim_time t) {
-        if (top_) set_verilator_time(t);
-        if (dump_fn_) dump_fn_(t);
-    });
-}
-
 template <typename Fn>
 Process* Kernel::add_process(Fn&& fn) {
-    return proc_mgr_.add(std::forward<Fn>(fn));
+    return process_manager_.add(std::forward<Fn>(fn));
 }
 
 template <typename Fn>
-void Kernel::on_pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
+void Kernel::pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
 
 template <typename Fn>
-void Kernel::on_post_eval(Fn&& fn) { sched_.on_post_eval(std::forward<Fn>(fn)); }
-
-template <typename Fn>
-void Kernel::on_comb(Fn&& fn) { sched_.on_comb(std::forward<Fn>(fn)); }
+void Kernel::post_eval(Fn&& fn) { sched_.on_post_eval(std::forward<Fn>(fn)); }
 
 template <typename Trigger, typename Fn>
 void Kernel::always(Trigger t, Fn fn) {
@@ -64,11 +64,6 @@ void Kernel::always(Trigger t, Fn fn) {
             return detail::make_always_edge_coro(sig, edge, std::move(fn));
         });
     }
-}
-
-template <typename Fn>
-void Kernel::always_comb(Fn fn) {
-    sched_.on_comb(std::forward<Fn>(fn));
 }
 
 template <typename Fn, typename... Args>
@@ -92,12 +87,6 @@ void Kernel::drive(Trigger t, Fn fn) {
     sched_.on_post_eval([this, sig = info.sig, edge = info.type, fn = std::move(fn)] {
         if (sched_.had_edge(sig, edge)) fn();
     });
-}
-
-template <typename Trigger, typename Device>
-void Kernel::device(Trigger t, Device& dev) {
-    sample(t, [&dev] { dev.update_input(); });
-    drive(t, [&dev] { dev.update_output(); });
 }
 
 } // namespace corosim

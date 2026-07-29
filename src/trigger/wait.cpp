@@ -1,3 +1,19 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        wait.cpp
+ * @brief       WaitGroup method implementations
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Adds edge/delay watches and cancels active wait entries.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #include "trigger/wait.hpp"
 
 namespace corosim {
@@ -12,21 +28,26 @@ WaitId* WaitGroup::add_delay_watch(TimerId timer) {
     return &entries_.back().id;
 }
 
+/**
+ * @brief Invalidate all waits.
+ * @note Entries are never erased; the scheduler may still hold WaitId*.
+ */
 void WaitGroup::cancel_all() {
     for (auto& e : entries_) {
         e.id.invalidate();
     }
-    // Never erase: scheduler holds WaitId* pointers into this list.
-    // Entries are destroyed with the WaitGroup when Process is destroyed.
 }
 
+/**
+ * @brief Invalidate all waits except @p keep (any() winner).
+ * @note Entries are never erased; the scheduler may still hold WaitId*.
+ */
 void WaitGroup::cancel_others(WaitId* keep) {
     for (auto& e : entries_) {
         if (&e.id != keep) {
             e.id.invalidate();
         }
     }
-    // Never erase: scheduler holds WaitId* pointers into this list.
 }
 
 bool WaitGroup::any_active() const {

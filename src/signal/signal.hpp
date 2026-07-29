@@ -1,3 +1,20 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        signal.hpp
+ * @brief       Typed simulation signal with non-blocking assignment
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Wraps a Verilator field or software storage; next() schedules
+ *              NBA until commit.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include <cstdint>
@@ -9,12 +26,22 @@
 
 namespace corosim {
 
+/**
+ * @brief Typed signal with read() and non-blocking next().
+ * @tparam T Value type (bool is stored as uint8_t).
+ *
+ * Bind @p ptr to a Verilator field, or omit it for a software-only signal.
+ */
 template <typename T>
-class Signal : private SignalBase {
+class Signal : public SignalBase {
     static constexpr bool is_bool_alias = std::is_same_v<T, bool>;
     using storage_t = std::conditional_t<is_bool_alias, uint8_t, T>;
 
 public:
+    /**
+     * @param reg Signal registry that owns commit/edge tracking.
+     * @param ptr Optional Verilator/storage pointer; nullptr uses internal store.
+     */
     explicit Signal(SignalRegistry& reg, storage_t* ptr = nullptr)
         : reg_(&reg), ptr_(ptr ? ptr : &store_), prev_val_(ptr ? *ptr : storage_t{}) {
         reg_->register_signal(this);
@@ -24,12 +51,14 @@ public:
         if (reg_) reg_->unregister_signal(this);
     }
 
+    /** @brief Current committed value. */
     T read() const {
         if constexpr (is_bool_alias) return *ptr_ != 0;
         else return *ptr_;
     }
     operator T() const { return read(); }
 
+    /** @brief Schedule non-blocking assign; applied on next commit_all(). */
     void next(T val) {
         if (!pending_) reg_->mark_pending(this);
         if constexpr (is_bool_alias) next_val_ = val ? 1 : 0;

@@ -1,3 +1,20 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        process.hpp
+ * @brief       Coroutine process lifecycle wrapper
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Owns a Task and WaitGroup; tracks ACTIVE/WAITING/DONE/CANCELLED
+ *              state.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include <coroutine>
@@ -9,6 +26,7 @@ namespace corosim {
 
 enum class ProcessState { ACTIVE, WAITING, DONE, CANCELLED };
 
+/** @brief One scheduled coroutine process with its wait set. */
 class Process {
 public:
     Process(ProcessId id, Task&& task)

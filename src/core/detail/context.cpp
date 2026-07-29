@@ -1,47 +1,50 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        context.cpp
+ * @brief       Awaiter registration helper implementations
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Looks up Kernel/Process from handles and schedules edge, delay,
+ *              or compound waits.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #include "context.hpp"
 #include "core/kernel.hpp"
-
-#include <cassert>
-#include <unordered_map>
+#include "process/task.hpp"
 
 namespace corosim {
 
-namespace {
-std::unordered_map<void*, Kernel*>& kernel_handle_map() {
-    static std::unordered_map<void*, Kernel*> map;
-    return map;
-}
-} // anonymous namespace
-
 namespace detail {
 
-Kernel* find_kernel(std::coroutine_handle<> h) {
-    auto it = kernel_handle_map().find(h.address());
-    return it != kernel_handle_map().end() ? it->second : nullptr;
-}
-
-void map_handle(std::coroutine_handle<> h, Kernel* k) {
-    kernel_handle_map()[h.address()] = k;
-}
-
-void unmap_handle(std::coroutine_handle<> h) {
-    kernel_handle_map().erase(h.address());
+Kernel* get_kernel(std::coroutine_handle<> h) {
+    return Task::promise_type::from_handle(h).kernel;
 }
 
 void register_edge_wait(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, int fire_idx, int* fired) {
-    auto* k = find_kernel(h);
+    auto* k = get_kernel(h);
     if (!k) return;
     k->register_edge_wait(sig, edge, h, fire_idx, fired);
 }
 
 void register_delay_wait(std::coroutine_handle<> h, sim_time interval, int fire_idx, int* fired) {
-    auto* k = find_kernel(h);
+    auto* k = get_kernel(h);
     if (!k) return;
     k->register_delay_wait(h, interval, fire_idx, fired);
 }
 
+/**
+ * @brief Register every trigger in @p infos against the same coroutine.
+ * @param fired Written with the winning trigger index when one fires.
+ */
 void register_compound_wait(std::coroutine_handle<> h, const TriggerInfo* infos, size_t count, int* fired) {
-    auto* k = find_kernel(h);
+    auto* k = get_kernel(h);
     if (!k) return;
     for (size_t i = 0; i < count; ++i) {
         switch (infos[i].type) {

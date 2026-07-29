@@ -6,41 +6,6 @@
 
 using namespace corosim;
 
-static Task reset_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk) {
-    std::printf("[clock_cycles] reset hold for 3 clocks\n");
-    rst->next(1);
-    for (int i = 0; i < 3; i++) co_await posedge(*wr_clk);
-    rst->next(0);
-    std::printf("[clock_cycles] reset done\n");
-}
-
-static Task write_proc(Signal<bool>* rst, Signal<uint8_t>* wr_clk,
-                Signal<bool>* wr_en, Signal<uint8_t>* wr_data,
-                Signal<bool>* wr_full, Signal<bool>* go) {
-    co_await posedge(*go);
-    std::printf("[Event] write driver started\n");
-
-    int wr_ok = 0;
-    while (true) {
-        co_await posedge(*wr_clk);
-        if (rst->read()) continue;
-        wr_en->next(1);
-        wr_data->next((uint8_t)(wr_ok & 0xFF));
-        if (!wr_full->read()) wr_ok++;
-    }
-}
-
-static Task go_trigger(Signal<bool>* g) {
-    co_await delay(25);
-    std::printf("[Event] go.set()\n");
-    g->next(true);
-}
-
-static Task timeout_trigger(Signal<bool>* t) {
-    co_await delay(200);
-    t->next(true);
-}
-
 int main(int argc, char* argv[]) {
     Verilated::commandArgs(argc, argv);
     Verilated::traceEverOn(true);
@@ -50,45 +15,69 @@ int main(int argc, char* argv[]) {
     top.trace(&tfp, 99);
     tfp.open("waveform.vcd");
 
-    Kernel sim;
+    Sim sim(top);
 
-    Signal<bool>     rst(sim.signals(), &top.rst);
-    Signal<uint8_t>  wr_clk(sim.signals(), &top.wr_clk);
-    Signal<uint8_t>  wr_data(sim.signals(), &top.wr_data);
-    Signal<bool>     wr_en(sim.signals(), &top.wr_en);
-    Signal<bool>     wr_full(sim.signals(), &top.wr_full);
-    Signal<bool>     wr_overflow(sim.signals(), &top.wr_overflow);
-    Signal<uint8_t>  rd_clk(sim.signals(), &top.rd_clk);
-    Signal<bool>     rd_en(sim.signals(), &top.rd_en);
-    Signal<bool>     rd_empty(sim.signals(), &top.rd_empty);
+    auto& rst    = sim.sig(top.rst);
+    auto& wr_clk = sim.sig(top.wr_clk);
+    auto& wr_data = sim.sig(top.wr_data);
+    auto& wr_en  = sim.sig(top.wr_en);
+    auto& wr_full = sim.sig(top.wr_full);
+    auto& wr_overflow = sim.sig(top.wr_overflow);
+    auto& rd_clk = sim.sig(top.rd_clk);
+    auto& rd_en  = sim.sig(top.rd_en);
+    auto& rd_empty = sim.sig(top.rd_empty);
 
-    sim.always(delay(2),  [&] { wr_clk.next(!wr_clk.read()); });
-    sim.always(delay(10), [&] { rd_clk.next(!rd_clk.read()); });
+    auto& go          = sim.sig<uint8_t>();
+    auto& overflow_evt = sim.sig<uint8_t>();
+    auto& timeout_evt = sim.sig<uint8_t>();
 
-    Signal<bool> go(sim.signals()), overflow_evt(sim.signals()), timeout_evt(sim.signals());
+    sim.clock(wr_clk, 4);
+    sim.clock(rd_clk, 20);
 
-    sim.instance(reset_proc, &rst, &wr_clk);
-    sim.instance(write_proc, &rst, &wr_clk, &wr_en, &wr_data, &wr_full, &go);
+    sim.instance([&]() -> Task {
+        std::printf("[clock_cycles] reset hold for 3 clocks\n");
+        rst.next(1);
+        for (int i = 0; i < 3; i++) co_await posedge(wr_clk);
+        rst.next(0);
+        std::printf("[clock_cycles] reset done\n");
+    });
+
+    sim.instance([&]() -> Task {
+        co_await posedge(go);
+        std::printf("[Event] write driver started\n");
+
+        int wr_ok = 0;
+        while (true) {
+            co_await posedge(wr_clk);
+            if (rst.read()) continue;
+            wr_en.next(1);
+            wr_data.next((uint8_t)(wr_ok & 0xFF));
+            if (!wr_full.read()) wr_ok++;
+        }
+    });
 
     sim.always(posedge(rd_clk), [&] {
         rd_en.next(!rd_empty.read() ? 1 : 0);
     });
 
-    int overflow_cnt = 0;
-    sim.always_comb([&] { if (wr_overflow.read()) overflow_cnt++; });
-
-    sim.instance(go_trigger, &go);
+    sim.instance([&]() -> Task {
+        co_await delay(25);
+        std::printf("[Event] go.set()\n");
+        go.next(true);
+    });
 
     sim.always(posedge(wr_clk), [&] {
         if (wr_overflow.read()) overflow_evt.next(true);
     });
 
-    sim.instance(timeout_trigger, &timeout_evt);
+    sim.instance([&]() -> Task {
+        co_await delay(200);
+        timeout_evt.next(true);
+    });
 
-    sim.init(&top, [&](sim_time t) { tfp.dump(t); });
-    sim.run(500);
+    sim.run(500, [&](sim_time t) { tfp.dump(t); });
     tfp.close();
 
-    std::printf("simulation done, overflow=%d\n", overflow_cnt);
+    std::printf("simulation done\n");
     return 0;
 }

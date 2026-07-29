@@ -1,3 +1,20 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        edge.hpp
+ * @brief       Coroutine awaiter for signal edge or change
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Suspends until the scheduler observes the requested edge on a
+ *              SignalBase.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include <coroutine>
@@ -7,6 +24,7 @@
 
 namespace corosim {
 
+/** @brief Awaitable for POSEDGE / NEGEDGE / CHANGE on a signal. */
 struct EdgeAwaiter {
     SignalBase* sig_;
     TriggerType type_;

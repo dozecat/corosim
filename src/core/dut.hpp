@@ -1,3 +1,20 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        dut.hpp
+ * @brief       Helper to bind Verilator TOP member fields as Signal
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Creates Signal wrappers from pointer-to-member for a DUT
+ *              instance.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #pragma once
 
 #include <memory>
@@ -6,18 +23,23 @@
 
 namespace corosim {
 
+/**
+ * @brief Binds Verilator @p TOP fields into owned Signal instances.
+ * @tparam TOP Verilator-generated top module type.
+ */
 template <typename TOP>
 class Dut {
     TOP& top_;
-    SignalRegistry& reg_;
+    SignalRegistry& signals_;
     std::vector<std::unique_ptr<SignalBase>> owned_signals_;
 
 public:
-    Dut(TOP& top, SignalRegistry& reg) : top_(top), reg_(reg) {}
+    Dut(TOP& top, SignalRegistry& signals) : top_(top), signals_(signals) {}
 
+    /** @brief Bind @p member of TOP as a Signal. */
     template <typename T>
     Signal<T>& sig(T TOP::*member) {
-        auto s = std::make_unique<Signal<T>>(reg_, &(top_.*member));
+        auto s = std::make_unique<Signal<T>>(signals_, &(top_.*member));
         auto* ptr = s.get();
         owned_signals_.push_back(std::move(s));
         return *ptr;

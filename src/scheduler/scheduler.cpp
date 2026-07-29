@@ -1,6 +1,22 @@
+/******************************************************************************
+ * Copyright (C) 2025 dozecat. All rights reserved.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file        scheduler.cpp
+ * @brief       Scheduler method implementations
+ * @see         https://github.com/dozecat/corosim
+ *
+ * @details     Implements run_one_tick phases and timer/monitor queue
+ *              processing.
+ *
+ * Modification History:
+ * Ver   Who  Date        Changes
+ * ----  ---- ----------  -----------------------------------------------------
+ * 1.0        2026/07/29  Initial release
+ ******************************************************************************/
+
 #include "scheduler.hpp"
 #include <algorithm>
-#include <stdexcept>
 
 namespace corosim {
 
@@ -11,6 +27,7 @@ TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, 
 }
 
 void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
+    // Defer inserts while process_monitor_queue() is iterating.
     if (monitor_processing_) {
         pending_monitor_.push_back({sig, edge, h, wid, fired, fire_idx});
     } else {
@@ -18,10 +35,7 @@ void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::corouti
     }
 }
 
-void Scheduler::schedule_delta(std::function<void()> callback) {
-    delta_callbacks_.push_back(std::move(callback));
-}
-
+/** @brief Resume monitors whose edge fired; keep the rest. */
 void Scheduler::process_monitor_queue() {
     if (monitor_queue_.empty()) return;
 
@@ -62,8 +76,13 @@ void Scheduler::process_monitor_queue() {
     pending_monitor_.clear();
 }
 
+/**
+ * @brief Execute one simulation tick at @c now_.
+ *
+ * Order: timed resume → commit → pre_eval → eval → post_eval → commit →
+ * monitors → commit (NBA from edge processes) → clear edges → dump.
+ */
 void Scheduler::run_one_tick() {
-    // ── Write: timed resume + commit + pre_eval + eval ──
     while (!timed_queue_.empty() && timed_queue_.top().deadline <= now_) {
         auto entry = timed_queue_.top();
         timed_queue_.pop();
@@ -74,54 +93,41 @@ void Scheduler::run_one_tick() {
         entry.handle.resume();
     }
 
-    sigs_.commit_all();
+    signals_.commit_all();
     for (auto& h : pre_eval_hooks_) if (h) h();
     if (eval_fn_) eval_fn_();
 
-    // ── Read: post_eval + commit + delta + monitor ──
     for (auto& h : post_eval_hooks_) if (h) h();
-    sigs_.commit_all();
-
-    for (size_t iteration = 0; ; iteration++) {
-        bool dirty = false;
-        for (auto& cb : delta_callbacks_) {
-            if (cb) cb();
-        }
-        sigs_.commit_all();
-        for (auto* sig : sigs_.dirty_signals()) {
-            if (sig->is_dirty()) {
-                dirty = true;
-                sig->clear_dirty();
-            }
-        }
-        if (!dirty) break;
-        if (iteration >= max_delta_)
-            throw std::runtime_error("Delta oscillation: max iterations exceeded");
-    }
+    signals_.commit_all();
 
     process_monitor_queue();
+    // Edge processes resume after eval; commit their NBA in this same time
+    // so wr_en/rd_en align with the clock edge in the waveform (HDL-like).
+    signals_.commit_all();
 
-    // ── Flip + Next ──
-    sigs_.clear_edge_flags();
+    signals_.clear_edge_flags();
     if (dump_fn_) dump_fn_(now_);
 }
 
+/** @brief Drain timers up to @p duration, advancing @c now_ as needed. */
 void Scheduler::run(sim_time duration) {
     run_one_tick();
-    now_ = 1;
-    while (now_ <= duration) {
-        while (!timed_queue_.empty() && timed_queue_.top().wid && !timed_queue_.top().wid->valid()) {
-            timed_queue_.pop();
+
+    while (true) {
+        while (!timed_queue_.empty()) {
+            auto& top = timed_queue_.top();
+            if (!top.wid || !top.wid->valid() || top.handle.done())
+                timed_queue_.pop();
+            else
+                break;
         }
-        if (!timed_queue_.empty()) {
-            sim_time next_deadline = timed_queue_.top().deadline;
-            if (next_deadline > now_ && next_deadline <= duration) {
-                now_ = next_deadline;
-            }
-        }
-        if (now_ > duration) break;
+        if (timed_queue_.empty()) break;
+
+        sim_time next_deadline = timed_queue_.top().deadline;
+        if (next_deadline > duration) break;
+
+        if (next_deadline > now_) now_ = next_deadline;
         run_one_tick();
-        now_++;
     }
 }
 
