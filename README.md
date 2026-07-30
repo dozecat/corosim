@@ -128,13 +128,13 @@ sim.instance([&]() -> Task {
 });
 
 // One-shot coroutine (standalone function)
-sim.instance(reset_proc, &rst, &wr_clk);
+sim.instance(reset, &rst, &wr_clk);
 ```
 
 Coroutine functions support `co_await` for synchronization:
 
 ```cpp
-Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
+Task reset(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
     rst->next(1);
     for (int i = 0; i < 5; i++) co_await posedge(*clk);
     rst->next(0);
@@ -169,13 +169,11 @@ make
 
 ### axis_async_fifo
 
-AXI4-Stream async FIFO testbench using BFM with `sample`/`drive` phase hooks. Four configurations via Verilator parameters `GFRAME_FIFO` and `GALWAYS_RECEIVE`.
+AXI4-Stream async FIFO testbench using BFM with `sample`/`drive` phase hooks. Frame-fifo mode only (aux FIFO stores per-frame side-channel signals; bad frames are detected and discarded).
 
 ```bash
 cd examples/axis_async_fifo/sim/tb
-make            # FRAME=0, ALWAYS_RECEIVE=0
-make frame      # FRAME=1, ALWAYS_RECEIVE=0
-make test-all   # all 4 configurations
+make
 ```
 
 ## Dependencies
@@ -314,13 +312,13 @@ sim.instance([&]() -> Task {
 });
 
 // 一次性协程 (独立函数)
-sim.instance(reset_proc, &rst, &wr_clk);
+sim.instance(reset, &rst, &wr_clk);
 ```
 
 协程函数中使用 `co_await` 同步：
 
 ```cpp
-Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
+Task reset(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
     rst->next(1);
     for (int i = 0; i < 5; i++) co_await posedge(*clk);
     rst->next(0);
@@ -354,13 +352,11 @@ make
 
 ### axis_async_fifo
 
-AXI4-Stream 异步 FIFO 测试，使用 BFM + `sample`/`drive` 相位钩子。通过 Verilator 参数 `GFRAME_FIFO` 和 `GALWAYS_RECEIVE` 支持 4 种配置。
+AXI4-Stream 异步 FIFO 测试，使用 BFM + `sample`/`drive` 相位钩子。仅 frame-fifo 模式（aux FIFO 存储帧级 side-channel 信号，检测并丢弃坏帧）。
 
 ```bash
 cd examples/axis_async_fifo/sim/tb
-make            # FRAME=0, ALWAYS_RECEIVE=0
-make frame      # FRAME=1, ALWAYS_RECEIVE=0
-make test-all   # 全部 4 种配置
+make
 ```
 
 ## 依赖
