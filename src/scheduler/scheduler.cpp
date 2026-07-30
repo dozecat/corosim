@@ -27,6 +27,7 @@ TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, 
 }
 
 void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
+    if (!sig) return;
     // Defer inserts while process_monitor_queue() is iterating.
     if (monitor_processing_) {
         pending_monitor_.push_back({sig, edge, h, wid, fired, fire_idx});
@@ -46,6 +47,7 @@ void Scheduler::process_monitor_queue() {
     for (auto& entry : monitor_queue_) {
         if (!entry.handle || entry.handle.done()) continue;
         if (!entry.wid || !entry.wid->valid()) continue;
+        if (!entry.sig) continue;
 
         bool triggered = false;
         switch (entry.edge) {
