@@ -8,9 +8,6 @@ module axis_async_fifo_tb
    parameter DEST_WIDTH = 1,
    parameter USER_WIDTH = 1,
    parameter DEPTH      = 16,
-   parameter FRAME_FIFO = 0,
-
-   parameter ALWAYS_RECEIVE = 0,
    parameter RAM_STYLE  = "distributed",
    parameter AUX_DEPTH  = 16,
    parameter AUX_RAM_STYLE = "distributed"
@@ -54,8 +51,6 @@ module axis_async_fifo_tb
    output wire                      m_good_frame,
 
    output wire [31:0]               tb_depth,
-   output wire                      tb_frame_fifo,
-   output wire                      tb_always_recv,
    output wire [31:0]               tb_data_width
 );
 
@@ -96,15 +91,13 @@ assign m_axis_tuser   = m_axis_if.tuser;
 assign m_axis_tvalid  = m_axis_if.tvalid;
 assign m_axis_if.tready = m_axis_tready;
 
-assign tb_depth       = DEPTH;
-assign tb_frame_fifo  = FRAME_FIFO;
-assign tb_always_recv = ALWAYS_RECEIVE;
-assign tb_data_width  = DATA_WIDTH;
+assign tb_depth      = DEPTH;
+assign tb_data_width = DATA_WIDTH;
 
 axis_async_fifo #(
    .DEPTH              ( DEPTH ),
-   .FRAME_FIFO         ( FRAME_FIFO ),
-   .ALWAYS_RECEIVE     ( ALWAYS_RECEIVE ),
+   .FRAME_FIFO         ( 1 ),
+   .ALWAYS_RECEIVE     ( 0 ),
    .RAM_STYLE          ( RAM_STYLE ),
    .AUX_DEPTH          ( AUX_DEPTH ),
    .AUX_RAM_STYLE      ( AUX_RAM_STYLE ),

@@ -32,7 +32,7 @@ static axis_slave_ptr<64,8,1,1> bind_slv(Vaxis_async_fifo_tb* top) {
     return p;
 }
 
-static Task reset_proc(Signal<uint8_t>* s_rst, Signal<uint8_t>* m_rst, Signal<uint8_t>* s_clk) {
+static Task reset(Signal<uint8_t>* s_rst, Signal<uint8_t>* m_rst, Signal<uint8_t>* s_clk) {
     s_rst->next(1);
     m_rst->next(1);
     for (int i = 0; i < 3; i++) co_await posedge(*s_clk);
@@ -40,7 +40,7 @@ static Task reset_proc(Signal<uint8_t>* s_rst, Signal<uint8_t>* m_rst, Signal<ui
     m_rst->next(0);
 }
 
-static Task writer_proc(Signal<uint8_t>* s_clk, axis_master<64,8,1,1>* mst, int nwords) {
+static Task writer(Signal<uint8_t>* s_clk, axis_master<64,8,1,1>* mst, int nwords) {
     for (int i = 0; i < 8; i++) co_await posedge(*s_clk);
 
     int total = nwords * DATA_BYTES;
@@ -53,7 +53,7 @@ static Task writer_proc(Signal<uint8_t>* s_clk, axis_master<64,8,1,1>* mst, int 
     for (int i = 0; i < 50; i++) co_await posedge(*s_clk);
 }
 
-static Task reader_proc(Signal<uint8_t>* m_clk, axis_slave<64,8,1,1>* slv,
+static Task reader(Signal<uint8_t>* m_clk, axis_slave<64,8,1,1>* slv,
                         int exp_words, int* rx_count) {
     for (int i = 0; i < 5; i++) co_await posedge(*m_clk);
 
@@ -103,8 +103,8 @@ int main(int argc, char** argv) {
 
     axis_master<64,8,1,1> mst(bind_mst(top.get()));
     axis_slave<64,8,1,1>  slv(bind_slv(top.get()));
-    mst.log.quiet = true;
-    slv.log.quiet = true;
+    mst.log.quiet = false;
+    slv.log.quiet = false;
 
     sim.clock(s_clk, 10);
     sim.clock(m_clk, 6);
@@ -119,9 +119,9 @@ int main(int argc, char** argv) {
     });
 
     int rx_count = 0;
-    sim.instance(reset_proc, &s_rst, &m_rst, &s_clk);
-    sim.instance(writer_proc, &s_clk, &mst, nwords);
-    sim.instance(reader_proc, &m_clk, &slv, nwords, &rx_count);
+    sim.instance(reset, &s_rst, &m_rst, &s_clk);
+    sim.instance(writer, &s_clk, &mst, nwords);
+    sim.instance(reader, &m_clk, &slv, nwords, &rx_count);
 
     printf("=== axis_async_fifo TB (corosim) ===\n");
     printf("DEPTH=%d words=%d\n", depth, nwords);
