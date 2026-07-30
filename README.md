@@ -1,4 +1,4 @@
-![Language](https://img.shields.io/badge/Language-C%2B%2B20-f34b7d.svg) ![Simulation](https://img.shields.io/badge/Simulation-Verilator-007ec6.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Coroutines](https://img.shields.io/badge/Coroutines-enabled-8A2BE2.svg)
+![Language](https://img.shields.io/badge/Language-C%2B%2B20-f34b7d.svg) ![Simulation](https://img.shields.io/badge/Simulation-Verilator-007ec6.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 [English](#en) | [中文](#cn)
 
@@ -7,21 +7,15 @@
 <span id="en">corosim</span>
 ===========================
 
-**corosim** is a C++20 coroutine-based co-simulation engine for [Verilator](https://www.veripool.org/verilator/), inspired by [MyHDL](https://github.com/jandecaluwe/myhdl) and [cocotb](https://github.com/cocotb/cocotb). It lets you write concurrent hardware testbenches using `co_await` — no manual state machines, no manual eval-loop management.
+**corosim** is a C++20 coroutine-based co-simulation engine for [Verilator](https://www.veripool.org/verilator/). It maps `co_await` to delta-cycle and timed-event scheduling, letting you write concurrent hardware testbenches without manual state machines or eval loops.
 
 ## Features
 
-| Feature | API | Description |
-|---------|-----|-------------|
-| **Non-blocking assignment** | `sig.next(val)` | Schedule a value — applied at end of delta cycle |
-| **Clock-edge trigger** | `sim.always(posedge(clk), fn)` | Auto-repeat process on rising edge |
-| **Delay trigger** | `sim.always(delay(n), fn)` | Fire every `n` time units |
-| **Coroutine process** | `sim.instance(fn, args...)` | One-shot coroutine with `co_await` |
-| **Multi-condition wait** | `co_await any(triggers...)` | Wait for first of multiple triggers |
-| **Software signal** | `Signal<bool>()` | Default-constructed, no DUT binding |
-| **Clock generator** | `sim.clock(sig, period)` | Toggle a signal every `period/2` |
-| **sample / drive** | `sim.sample(...)` / `sim.drive(...)` | Phase-aligned I/O sampling |
-| **sample / drive** | `sim.sample(...)` / `sim.drive(...)` | Phase-aligned I/O sampling |
+- **Coroutine concurrency** — `co_await posedge()`, `co_await delay()`, `co_await any()`
+- **Non-blocking signals** — `sig.next(val)` with delta-cycle scheduling
+- **Trigger-based processes** — `sim.always()` for repeating triggers, `sim.instance()` for one-shot coroutines
+- **Phase-aligned I/O** — `sim.sample()` / `sim.drive()` for BFM-style transactions
+- **Software signals** — cross-process sync without DUT binding
 
 ## Quick Start
 
@@ -84,6 +78,13 @@ sim.clock(clk, 10);                   // toggle clk every 5 time units
 sim.run(500, [&](sim_time t) { tfp.dump(t); });
 ```
 
+For pointer-to-member binding, use `Dut<TOP>`:
+```cpp
+Dut<TOP> dut(top, sim.signals());
+auto& clk = dut.sig(&TOP::clk);
+auto& rst = dut.sig(&TOP::rst);
+```
+
 ### Signal — Verilator Field Binding
 
 ```cpp
@@ -102,14 +103,6 @@ Signal<uint16_t> wide(&top.wide);   // 16-bit  → SData
 
 For wide vectors (`VlWide<N>`), use `Signal<VlWide<N>>` — see `signal/wide.hpp`.
 
-### Dut&lt;TOP&gt; — Pointer-to-Member Binding
-
-```cpp
-Dut<TOP> dut(top, sim.signals());
-auto& clk = dut.sig(&TOP::clk);     // bind via pointer-to-member
-auto& rst = dut.sig(&TOP::rst);
-```
-
 ### Triggers
 
 | Trigger | Type constraint | `sim.always()` | `co_await` |
@@ -121,31 +114,26 @@ auto& rst = dut.sig(&TOP::rst);
 
 `posedge`/`negedge` require 1-byte signal types; `change` works with any signal width.
 
-### Process Registration
+### Processes
 
 ```cpp
-// Auto-repeat on every posedge
-sim.always(posedge(clk), [&] {
-    cnt.next(cnt.read() + 1);
-});
-
-// Auto-repeat every 5 time units
+// Auto-repeat on trigger
+sim.always(posedge(clk), [&] { cnt.next(cnt.read() + 1); });
 sim.always(delay(5), [&] { clk.next(!clk.read()); });
 
-// Coroutine process (lambda)
+// One-shot coroutine (lambda)
 sim.instance([&]() -> Task {
     co_await delay(30);
     go.next(true);
 });
 
-// Coroutine process (standalone function)
+// One-shot coroutine (standalone function)
 sim.instance(reset_proc, &rst, &wr_clk);
 ```
 
-### Coroutine Primitives
+Coroutine functions support `co_await` for synchronization:
 
 ```cpp
-// Standalone coroutine function
 Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
     rst->next(1);
     for (int i = 0; i < 5; i++) co_await posedge(*clk);
@@ -155,33 +143,13 @@ Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
 co_await delay(30);                   // wait 30 time units
 co_await posedge(clk);                // wait for rising edge
 
-// Software signal for cross-process sync
-Signal<bool> flag;
-// process A:
-co_await posedge(flag);
-// process B:
-flag.next(true);
-
 // Multi-condition wait — returns winning trigger index
 int w = co_await any(posedge(clk), delay(200));
 // w == 0: posedge(clk) fired first
 // w == 1: delay(200) fired first
 ```
 
-### Clock Generator
-
-```cpp
-sim.clock(sig, 10);        // toggle sig every 5 time units
-```
-
-This is equivalent to:
-```cpp
-sim.always(delay(5), [&] { sig.next(!sig.read()); });
-```
-
-### sample / drive — Phase-Aligned Access
-
-`sample` runs before DUT eval (phase 2), `drive` runs after (phase 4):
+For phase-aligned I/O, `sample` runs before DUT eval and `drive` runs after:
 
 ```cpp
 sim.sample(posedge(clk), [&] { bfm.sample_inputs(); });
@@ -225,20 +193,15 @@ MIT License — see [LICENSE](LICENSE).
 <span id="cn">corosim</span>
 ===========================
 
-**corosim** 是一个基于 C++20 协程的 [Verilator](https://www.veripool.org/verilator/) 协同仿真引擎，灵感来自 [MyHDL](https://github.com/jandecaluwe/myhdl) 和 [cocotb](https://github.com/cocotb/cocotb)。使用 `co_await` 编写并发硬件测试台，无需手动状态机，无需手动管理 eval 循环。
+**corosim** 是一个基于 C++20 协程的 [Verilator](https://www.veripool.org/verilator/) 协同仿真引擎。它将 `co_await` 映射为 delta 周期和定时事件调度，用于编写并发硬件测试台。
 
 ## 特性
 
-| 功能 | API | 说明 |
-|------|-----|------|
-| 非阻塞赋值 | `sig.next(val)` | delta 周期结束时提交 |
-| 时钟沿触发 | `sim.always(posedge(clk), fn)` | 上升沿自动重复 |
-| 时间触发 | `sim.always(delay(n), fn)` | 每 n 时间单位触发 |
-| 协程进程 | `sim.instance(fn, args...)` | 支持参数的协程，内部 `co_await` |
-| 多条件等待 | `co_await any(triggers...)` | 最先到达者恢复 |
-| 软件信号 | `Signal<bool>()` | 默认构造，不绑定 DUT |
-| 时钟生成 | `sim.clock(sig, period)` | 每 period/2 翻转一次 |
-| sample / drive | `sim.sample(...)` / `sim.drive(...)` | 相位对齐的 I/O 采样 |
+- **协程并发** — `co_await posedge()`、`co_await delay()`、`co_await any()`
+- **非阻塞信号** — `sig.next(val)`，delta 周期调度
+- **触发进程** — `sim.always()` 重复触发，`sim.instance()` 一次性协程
+- **相位 I/O** — `sim.sample()` / `sim.drive()` 用于 BFM 总线事务
+- **软件信号** — 无需 DUT 绑定的跨进程同步
 
 ## 快速开始
 
@@ -301,6 +264,13 @@ sim.clock(clk, 10);                   // 每 5 时间单位翻转 clk
 sim.run(500, [&](sim_time t) { tfp.dump(t); });
 ```
 
+使用 `Dut<TOP>` 进行成员指针绑定：
+```cpp
+Dut<TOP> dut(top, sim.signals());
+auto& clk = dut.sig(&TOP::clk);
+auto& rst = dut.sig(&TOP::rst);
+```
+
 ### Signal — Verilator 信号绑定
 
 ```cpp
@@ -319,14 +289,6 @@ Signal<uint16_t> wide(&top.wide);   // 16-bit  → SData
 
 宽向量（`VlWide<N>`）使用 `Signal<VlWide<N>>`。
 
-### Dut&lt;TOP&gt; — 成员指针绑定
-
-```cpp
-Dut<TOP> dut(top, sim.signals());
-auto& clk = dut.sig(&TOP::clk);
-auto& rst = dut.sig(&TOP::rst);
-```
-
 ### 触发事件
 
 | 触发器 | 类型限制 | `sim.always()` | `co_await` |
@@ -338,21 +300,24 @@ auto& rst = dut.sig(&TOP::rst);
 
 `posedge`/`negedge` 仅支持 1 字节信号；`change` 支持任意宽度。
 
-### 进程注册
+### 进程
 
 ```cpp
+// 触发重复执行
 sim.always(posedge(clk), [&] { cnt.next(cnt.read() + 1); });
 sim.always(delay(5), [&] { clk.next(!clk.read()); });
 
+// 一次性协程 (lambda)
 sim.instance([&]() -> Task {
     co_await delay(30);
     go.next(true);
 });
 
+// 一次性协程 (独立函数)
 sim.instance(reset_proc, &rst, &wr_clk);
 ```
 
-### 协程原语
+协程函数中使用 `co_await` 同步：
 
 ```cpp
 Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
@@ -364,25 +329,13 @@ Task reset_proc(Signal<uint8_t>* rst, Signal<uint8_t>* clk) {
 co_await delay(30);
 co_await posedge(clk);
 
-// 多条件等待
+// 多条件等待 — 返回先触发的索引
 int w = co_await any(posedge(clk), delay(200));
 // w == 0: posedge(clk) 先到
 // w == 1: delay(200) 先到
 ```
 
-### 时钟生成
-
-```cpp
-sim.clock(sig, 10);   // 每 5 时间单位翻转一次
-```
-
-等价于：
-```cpp
-sim.always(delay(5), [&] { sig.next(!sig.read()); });
-```
-
-### sample / drive
-
+`sample` 在 DUT eval 前执行，`drive` 在 eval 后执行：
 ```cpp
 sim.sample(posedge(clk), [&] { bfm.sample_inputs(); });
 sim.drive(posedge(clk),  [&] { bfm.drive_outputs(); });
