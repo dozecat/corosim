@@ -44,7 +44,7 @@ public:
     ~Kernel();
 
     SignalRegistry& signals() { return signals_; }
-    Scheduler& sched() { return sched_; }
+    Scheduler& scheduler() { return sched_; }
     ProcessManager& process_manager() { return process_manager_; }
 
     void set_top(void* top) { top_ = top; }
@@ -60,7 +60,7 @@ public:
 
     /** @brief Spawn a one-shot coroutine process. */
     template <typename Fn, typename... Args>
-    void instance(Fn&& fn, Args&&... args);
+    Process* instance(Fn&& fn, Args&&... args);
 
     /** @brief Run @p fn on trigger before DUT eval (sample phase). */
     template <typename Trigger, typename Fn>
@@ -95,7 +95,7 @@ private:
     void* top_ = nullptr;
 
     template <typename Fn>
-    Process* add_process(Fn&& fn);
+    Process* add_process(Fn&& fn) { return process_manager_.spawn(std::forward<Fn>(fn)); }
 };
 
 } // namespace corosim

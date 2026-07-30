@@ -15,7 +15,7 @@
  * 1.0        2026/07/29  Initial release
  ******************************************************************************/
 
-#include "context.hpp"
+#include "wait_register.hpp"
 #include "core/kernel.hpp"
 #include "process/task.hpp"
 

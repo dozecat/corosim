@@ -72,8 +72,8 @@ private:
 
     bool is_dirty() const override { return dirty_; }
     void clear_dirty() override { dirty_ = false; }
-    bool had_posedge() const override { return false; }
-    bool had_negedge() const override { return false; }
+    bool has_posedge() const override { return false; }
+    bool has_negedge() const override { return false; }
     bool has_changed() const override { return changed_this_tick_; }
     void clear_edge_flags() override { changed_this_tick_ = false; }
 };

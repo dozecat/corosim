@@ -42,11 +42,6 @@ inline Task make_always_delay_coro(sim_time interval, Fn fn) {
 namespace corosim {
 
 template <typename Fn>
-Process* Kernel::add_process(Fn&& fn) {
-    return process_manager_.add(std::forward<Fn>(fn));
-}
-
-template <typename Fn>
 void Kernel::pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
 
 template <typename Fn>
@@ -67,8 +62,8 @@ void Kernel::always(Trigger t, Fn fn) {
 }
 
 template <typename Fn, typename... Args>
-void Kernel::instance(Fn&& fn, Args&&... args) {
-    add_process([fn = std::forward<Fn>(fn), ...args = std::forward<Args>(args)]() -> Task {
+Process* Kernel::instance(Fn&& fn, Args&&... args) {
+    return add_process([fn = std::forward<Fn>(fn), ...args = std::forward<Args>(args)]() -> Task {
         return fn(args...);
     });
 }

@@ -38,6 +38,8 @@ Kernel::Kernel()
         auto* proc = get_process_from_handle(h);
         if (proc) proc->waits().cancel_others(wid);
     });
+    // Signal deregistration notifies scheduler to clean monitor entries.
+    signals_.on_signal_unregistered = [this](SignalBase* s) { sched_.on_signal_destroy(s); };
 }
 
 Kernel::~Kernel() {}

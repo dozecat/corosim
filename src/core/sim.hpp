@@ -25,6 +25,7 @@
 #include "core/kernel.hpp"
 #include "signal/signal.hpp"
 #include "trigger/delay.hpp"
+#include "trigger/edge.hpp"
 
 namespace corosim {
 
@@ -42,7 +43,7 @@ class Sim {
 public:
     explicit Sim(TOP& top) : top_(top), kernel_() {
         kernel_.set_top(&top);
-        kernel_.sched().set_eval_fn([&top] { top.eval(); });
+        kernel_.scheduler().set_eval_fn([&top] { top.eval(); });
     }
 
     /** @brief Bind a Verilator field as a Signal. */
@@ -66,7 +67,7 @@ public:
     /** @brief Toggle @p sig every period/2 time units. */
     template <typename T>
     void clock(Signal<T>& sig, sim_time period) {
-        kernel_.always(corosim::delay(period / 2), [&sig] { sig.next(!sig.read()); });
+        kernel_.always(corosim::delay(period / 2), [p = &sig] { p->next(!p->read()); });
     }
 
     SignalRegistry& signals() { return kernel_.signals(); }
@@ -77,8 +78,21 @@ public:
     void always(Trigger t, Fn fn) { kernel_.always(t, std::move(fn)); }
 
     template <typename Fn, typename... Args>
-    void instance(Fn&& fn, Args&&... args) {
-        kernel_.instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
+    Process* instance(Fn&& fn, Args&&... args) {
+        return kernel_.instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
+    }
+
+    template <typename Trigger, typename Fn>
+    Process* check(Trigger t, Fn fn) {
+        auto info = t.trigger_info();
+        if (info.type == TriggerType::DELAY) {
+            return instance([interval = info.interval, fn = std::move(fn)]() -> Task {
+                while (true) { co_await delay(interval); fn(); }
+            });
+        }
+        return instance([sig = info.sig, edge = info.type, fn = std::move(fn)]() -> Task {
+            while (true) { co_await EdgeAwaiter{sig, edge}; fn(); }
+        });
     }
 
     template <typename Trigger, typename Fn>
@@ -99,7 +113,7 @@ public:
      */
     void run(sim_time duration, std::function<void(sim_time)> dump_fn = nullptr) {
         if (dump_fn && !dump_setup_) {
-            kernel_.sched().set_dump_fn([this, dump_fn](sim_time t) {
+            kernel_.scheduler().set_dump_fn([this, dump_fn](sim_time t) {
                 kernel_.set_verilator_time(t);
                 dump_fn(t);
             });

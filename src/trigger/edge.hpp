@@ -20,7 +20,7 @@
 #include <coroutine>
 #include "core/types.hpp"
 #include "signal/signal_base.hpp"
-#include "core/detail/context.hpp"
+#include "core/detail/wait_register.hpp"
 
 namespace corosim {
 

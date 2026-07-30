@@ -39,4 +39,12 @@ void Process::cancel() {
     wait_group_.cancel_all();
 }
 
+void Process::restart(Task&& new_task) {
+    state_ = ProcessState::CANCELLED;
+    wait_group_.cancel_all();
+    task_ = std::move(new_task);
+    id_.generation++;
+    state_ = ProcessState::ACTIVE;
+}
+
 } // namespace corosim

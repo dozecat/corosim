@@ -22,7 +22,7 @@
 #include <utility>
 
 #include "core/types.hpp"
-#include "core/detail/context.hpp"
+#include "core/detail/wait_register.hpp"
 #include "trigger/edge.hpp"
 #include "trigger/delay.hpp"
 

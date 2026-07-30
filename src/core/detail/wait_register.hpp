@@ -2,7 +2,7 @@
  * Copyright (C) 2025 dozecat. All rights reserved.
  * SPDX-License-Identifier: MIT
  *
- * @file        context.hpp
+ * @file        wait_register.hpp
  * @brief       Internal awaiter registration bridge to Kernel
  * @see         https://github.com/dozecat/corosim
  *

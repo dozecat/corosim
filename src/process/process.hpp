@@ -50,6 +50,7 @@ public:
 
     void resume();
     void cancel();
+    void restart(Task&& new_task);
 
     std::exception_ptr get_exception() const { return task_.get_exception(); }
 

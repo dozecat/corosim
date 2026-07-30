@@ -36,6 +36,10 @@
 #include "trigger/delay.hpp"
 #include "trigger/any.hpp"
 
+// Verification
+#include "check.hpp"
+#include "logger.hpp"
+
 // Process
 #include "process/task.hpp"
 #include "process/process.hpp"

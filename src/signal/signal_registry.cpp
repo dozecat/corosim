@@ -29,6 +29,7 @@ void SignalRegistry::unregister_signal(SignalBase* s) {
     if (it != signals_.end()) signals_.erase(it);
     auto pit = std::find(pending_signals_.begin(), pending_signals_.end(), s);
     if (pit != pending_signals_.end()) pending_signals_.erase(pit);
+    if (on_signal_unregistered) on_signal_unregistered(s);
 }
 
 void SignalRegistry::mark_pending(SignalBase* s) {

@@ -94,8 +94,8 @@ private:
 
     bool is_dirty() const override { return dirty_; }
     void clear_dirty() override { dirty_ = false; }
-    bool had_posedge() const override { return posedge_flag_; }
-    bool had_negedge() const override { return negedge_flag_; }
+    bool has_posedge() const override { return posedge_flag_; }
+    bool has_negedge() const override { return negedge_flag_; }
     bool has_changed() const override { return changed_this_tick_; }
     void clear_edge_flags() override { posedge_flag_ = false; negedge_flag_ = false; changed_this_tick_ = false; }
 };

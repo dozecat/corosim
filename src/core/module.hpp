@@ -22,6 +22,8 @@
 #include <vector>
 #include "signal/signal.hpp"
 #include "core/kernel.hpp"
+#include "trigger/delay.hpp"
+#include "trigger/edge.hpp"
 
 namespace corosim {
 
@@ -72,8 +74,21 @@ public:
     void always(Trigger t, Fn fn) { kernel_->always(t, std::move(fn)); }
 
     template <typename Fn, typename... Args>
-    void instance(Fn&& fn, Args&&... args) {
-        kernel_->instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
+    Process* instance(Fn&& fn, Args&&... args) {
+        return kernel_->instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
+    }
+
+    template <typename Trigger, typename Fn>
+    Process* check(Trigger t, Fn fn) {
+        auto info = t.trigger_info();
+        if (info.type == TriggerType::DELAY) {
+            return instance([interval = info.interval, fn = std::move(fn)]() -> Task {
+                while (true) { co_await delay(interval); fn(); }
+            });
+        }
+        return instance([sig = info.sig, edge = info.type, fn = std::move(fn)]() -> Task {
+            while (true) { co_await EdgeAwaiter{sig, edge}; fn(); }
+        });
     }
 
     template <typename Trigger, typename Fn>

@@ -17,36 +17,27 @@
 
 #pragma once
 
+#include <functional>
 #include <vector>
 #include "signal_base.hpp"
 
 namespace corosim {
 
-/**
- * @brief Central registry for SignalBase instances.
- *
- * Pending NBA values are committed via commit_all(); dirty/edge flags are
- * queried by the scheduler after each eval/delta phase.
- */
 class SignalRegistry {
 public:
-    /** @brief Register @p s for commit and edge tracking. */
     void register_signal(SignalBase* s);
-    /** @brief Unregister @p s from all lists. */
     void unregister_signal(SignalBase* s);
-    /** @brief Queue @p s for NBA commit at end of phase. */
     void mark_pending(SignalBase* s);
 
-    /** @brief Apply all pending next() values. */
     void commit_all();
-    /** @brief True if any signal is dirty after the last commit. */
     bool any_dirty() const;
     void clear_dirty();
     void clear_edge_flags();
 
-    /** @brief All registered signals (not only dirty ones). */
     std::vector<SignalBase*>& signals() { return signals_; }
     const std::vector<SignalBase*>& signals() const { return signals_; }
+
+    std::function<void(SignalBase*)> on_signal_unregistered;
 
 private:
     std::vector<SignalBase*> signals_;

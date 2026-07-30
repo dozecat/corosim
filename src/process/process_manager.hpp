@@ -24,7 +24,7 @@
 
 #include "task.hpp"
 #include "process.hpp"
-#include "core/detail/context.hpp"
+#include "core/detail/wait_register.hpp"
 
 namespace corosim {
 
@@ -40,7 +40,7 @@ public:
      * @param fn Invoked once; return value is the process body.
      */
     template <typename Fn>
-    Process* add(Fn&& fn) {
+    Process* spawn(Fn&& fn) {
         auto task = std::forward<Fn>(fn)();
         auto id = ProcessId{next_pid_++, 0};
         auto proc = std::make_unique<Process>(id, std::move(task));
@@ -56,6 +56,24 @@ public:
     }
 
     Process* find_process(std::coroutine_handle<> h) const;
+
+    /**
+     * @brief Replace the body of process @p id with a fresh coroutine.
+     * @return The process pointer (same memory, bumped generation).
+     */
+    template <typename Fn>
+    Process* restart(ProcessId id, Fn&& fn) {
+        auto it = processes_.find(id.id);
+        if (it == processes_.end() || !it->second) return nullptr;
+        auto* proc = it->second.get();
+        auto new_task = std::forward<Fn>(fn)();
+        proc->restart(std::move(new_task));
+        auto& promise = Task::promise_type::from_handle(proc->void_handle());
+        promise.kernel = kernel_;
+        promise.process = proc;
+        proc->resume();
+        return proc;
+    }
 
     size_t active_count() const;
     void cleanup_finished();

@@ -1,134 +1,61 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        scheduler.cpp
- * @brief       Scheduler method implementations
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Implements run_one_tick phases and timer/monitor queue
- *              processing.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #include "scheduler.hpp"
 #include <algorithm>
 
 namespace corosim {
 
-TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
-    TimerId tid{next_timer_id_++};
-    timed_queue_.push({deadline, tid, h, wid, fired, fire_idx});
-    return tid;
+TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, WaitId* wid,
+                                  int fire_idx, int* fired) {
+    return timer_.schedule(deadline, h, wid, fire_idx, fired);
 }
 
-void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h, WaitId* wid, int fire_idx, int* fired) {
-    if (!sig) return;
-    // Defer inserts while process_monitor_queue() is iterating.
-    if (monitor_processing_) {
-        pending_monitor_.push_back({sig, edge, h, wid, fired, fire_idx});
-    } else {
-        monitor_queue_.push_back({sig, edge, h, wid, fired, fire_idx});
-    }
+void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h,
+                                  WaitId* wid, int fire_idx, int* fired) {
+    monitor_.watch(sig, edge, h, wid, fire_idx, fired);
 }
 
-/** @brief Resume monitors whose edge fired; keep the rest. */
-void Scheduler::process_monitor_queue() {
-    if (monitor_queue_.empty()) return;
-
-    monitor_processing_ = true;
-    decltype(monitor_queue_) kept;
-    kept.reserve(monitor_queue_.size());
-
-    for (auto& entry : monitor_queue_) {
-        if (!entry.handle || entry.handle.done()) continue;
-        if (!entry.wid || !entry.wid->valid()) continue;
-        if (!entry.sig) continue;
-
-        bool triggered = false;
-        switch (entry.edge) {
-        case TriggerInfo::POSEDGE:
-            triggered = entry.sig->had_posedge();
-            break;
-        case TriggerInfo::NEGEDGE:
-            triggered = entry.sig->had_negedge();
-            break;
-        case TriggerInfo::CHANGE:
-            triggered = entry.sig->has_changed();
-            break;
-        default:
-            break;
-        }
-        if (triggered) {
-            if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
-            if (cancel_others_fn_) cancel_others_fn_(entry.handle, entry.wid);
-            entry.wid->invalidate();
-            entry.handle.resume();
-        } else {
-            kept.push_back(entry);
-        }
-    }
-    monitor_queue_ = std::move(kept);
-    monitor_processing_ = false;
-    monitor_queue_.insert(monitor_queue_.end(), pending_monitor_.begin(), pending_monitor_.end());
-    pending_monitor_.clear();
+void Scheduler::fire_coroutine(std::coroutine_handle<> h, WaitId* wid, int* fire_idx, int fire_value) {
+    if (fire_idx) *fire_idx = fire_value;
+    if (cancel_others_fn_) cancel_others_fn_(h, wid);
+    if (wid) wid->invalidate();
+    h.resume();
 }
 
-/**
- * @brief Execute one simulation tick at @c now_.
- *
- * Order: timed resume → commit → pre_eval → eval → post_eval → commit →
- * monitors → commit (NBA from edge processes) → clear edges → dump.
- */
 void Scheduler::run_one_tick() {
-    while (!timed_queue_.empty() && timed_queue_.top().deadline <= now_) {
-        auto entry = timed_queue_.top();
-        timed_queue_.pop();
-        if (!entry.handle || entry.handle.done()) continue;
-        if (!entry.wid || !entry.wid->valid()) continue;
-        if (entry.fire_idx) *entry.fire_idx = entry.fire_value;
-        if (cancel_others_fn_) cancel_others_fn_(entry.handle, entry.wid);
-        entry.handle.resume();
-    }
+    auto fire_lambda = [this](std::coroutine_handle<> h, WaitId* wid, int* fire_idx, int fire_value) {
+        fire_coroutine(h, wid, fire_idx, fire_value);
+    };
 
-    signals_.commit_all();
-    for (auto& h : pre_eval_hooks_) if (h) h();
-    if (eval_fn_) eval_fn_();
+    // Advance any remaining timers at the current time (e.g. scheduled by a
+    // monitor callback earlier in the same tick → chained delta).
+    timer_.advance_to(timer_.now(), [&](const TimerEngine::Event& ev) {
+        fire_coroutine(ev.handle, ev.wid, ev.fire_idx, ev.fire_value);
+    });
 
-    for (auto& h : post_eval_hooks_) if (h) h();
-    signals_.commit_all();
+    delta_.eval();
+    monitor_.process(fire_lambda);
+    delta_.commit();
+    delta_.end_tick();
 
-    process_monitor_queue();
-    // Edge processes resume after eval; commit their NBA in this same time
-    // so wr_en/rd_en align with the clock edge in the waveform (HDL-like).
-    signals_.commit_all();
-
-    signals_.clear_edge_flags();
-    if (dump_fn_) dump_fn_(now_);
+    if (dump_fn_) dump_fn_(timer_.now());
 }
 
-/** @brief Drain timers up to @p duration, advancing @c now_ as needed. */
 void Scheduler::run(sim_time duration) {
-    run_one_tick();
+    // Time-0 delta cycle: settle DUT combinational state and commit any
+    // initial NBA writes (reset etc.). No timer/monitor processing needed
+    // because no timer has fired yet.
+    delta_.eval();
+    delta_.commit();
+    delta_.end_tick();
+    if (dump_fn_) dump_fn_(timer_.now());
 
     while (true) {
-        while (!timed_queue_.empty()) {
-            auto& top = timed_queue_.top();
-            if (!top.wid || !top.wid->valid() || top.handle.done())
-                timed_queue_.pop();
-            else
-                break;
-        }
-        if (timed_queue_.empty()) break;
+        auto nd = timer_.next_deadline();
+        if (!nd) break;
+        if (*nd > duration) break;
 
-        sim_time next_deadline = timed_queue_.top().deadline;
-        if (next_deadline > duration) break;
-
-        if (next_deadline > now_) now_ = next_deadline;
+        timer_.advance_to(*nd, [&](const TimerEngine::Event& ev) {
+            fire_coroutine(ev.handle, ev.wid, ev.fire_idx, ev.fire_value);
+        });
         run_one_tick();
     }
 }
