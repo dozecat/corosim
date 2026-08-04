@@ -32,7 +32,7 @@ void Scheduler::run_one_tick() {
     });
 
     delta_.eval();
-    monitor_.process(fire_lambda);
+    monitor_.process(signals_.changed_signals(), fire_lambda);
     delta_.commit();
     delta_.end_tick();
 

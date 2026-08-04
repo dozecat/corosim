@@ -75,7 +75,7 @@ private:
     storage_t prev_val_;
     storage_t next_val_;
     bool pending_ = false;
-    bool dirty_   = false;
+    bool marked_changed_ = false;
     bool posedge_flag_ = false;
     bool negedge_flag_ = false;
     bool changed_this_tick_ = false;
@@ -86,18 +86,20 @@ private:
             *ptr_ = next_val_;
             posedge_flag_ = !prev_val_ && *ptr_;
             negedge_flag_ = prev_val_ && !*ptr_;
-            dirty_ = (prev_val_ != *ptr_);
-            if (dirty_) changed_this_tick_ = true;
+            if (prev_val_ != *ptr_) {
+                changed_this_tick_ = true;
+                if (reg_) reg_->mark_changed(this);
+            }
             pending_ = false;
         }
     }
 
-    bool is_dirty() const override { return dirty_; }
-    void clear_dirty() override { dirty_ = false; }
     bool has_posedge() const override { return posedge_flag_; }
     bool has_negedge() const override { return negedge_flag_; }
     bool has_changed() const override { return changed_this_tick_; }
     void clear_edge_flags() override { posedge_flag_ = false; negedge_flag_ = false; changed_this_tick_ = false; }
+    bool marked_changed() const override { return marked_changed_; }
+    void set_marked_changed(bool v) override { marked_changed_ = v; }
 };
 
 } // namespace corosim

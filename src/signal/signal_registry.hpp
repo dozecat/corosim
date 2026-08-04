@@ -28,10 +28,11 @@ public:
     void register_signal(SignalBase* s);
     void unregister_signal(SignalBase* s);
     void mark_pending(SignalBase* s);
+    void mark_changed(SignalBase* s);
 
     void commit_all();
-    bool any_dirty() const;
-    void clear_dirty();
+    bool any_changed() const { return !changed_signals_.empty(); }
+    const std::vector<SignalBase*>& changed_signals() const { return changed_signals_; }
     void clear_edge_flags();
 
     std::vector<SignalBase*>& signals() { return signals_; }
@@ -42,6 +43,7 @@ public:
 private:
     std::vector<SignalBase*> signals_;
     std::vector<SignalBase*> pending_signals_;
+    std::vector<SignalBase*> changed_signals_;
 };
 
 } // namespace corosim

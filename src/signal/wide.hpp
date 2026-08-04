@@ -57,25 +57,27 @@ private:
     VlWide<N> prev_val_;
     VlWide<N> next_val_;
     bool pending_ = false;
-    bool dirty_   = false;
+    bool marked_changed_ = false;
     bool changed_this_tick_ = false;
 
     void commit() override {
         if (pending_) {
             std::memcpy(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N);
             *ptr_ = next_val_;
-            dirty_ = std::memcmp(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N) != 0;
-            if (dirty_) changed_this_tick_ = true;
+            if (std::memcmp(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N) != 0) {
+                changed_this_tick_ = true;
+                if (reg_) reg_->mark_changed(this);
+            }
             pending_ = false;
         }
     }
 
-    bool is_dirty() const override { return dirty_; }
-    void clear_dirty() override { dirty_ = false; }
     bool has_posedge() const override { return false; }
     bool has_negedge() const override { return false; }
     bool has_changed() const override { return changed_this_tick_; }
     void clear_edge_flags() override { changed_this_tick_ = false; }
+    bool marked_changed() const override { return marked_changed_; }
+    void set_marked_changed(bool v) override { marked_changed_ = v; }
 };
 
 } // namespace corosim

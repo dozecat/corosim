@@ -18,6 +18,7 @@
 #pragma once
 
 #include <coroutine>
+#include <memory>
 #include "core/types.hpp"
 #include "process/task.hpp"
 #include "trigger/wait.hpp"
@@ -48,6 +49,14 @@ public:
     WaitGroup& waits() { return wait_group_; }
     std::coroutine_handle<> void_handle() const { return task_.void_handle(); }
 
+    /**
+     * @brief Keep the coroutine factory closure alive for the process lifetime.
+     *
+     * A coroutine created from a [&] lambda captures its references into the
+     * factory closure object; the closure must outlive the coroutine frame.
+     */
+    void set_factory_holder(std::shared_ptr<void> h) { factory_holder_ = std::move(h); }
+
     void resume();
     void cancel();
     void restart(Task&& new_task);
@@ -56,6 +65,7 @@ public:
 
 private:
     ProcessId id_;
+    std::shared_ptr<void> factory_holder_;
     Task task_;
     ProcessState state_ = ProcessState::ACTIVE;
     WaitGroup wait_group_;

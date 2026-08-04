@@ -27,12 +27,13 @@ public:
     virtual ~SignalBase() = default;
     /** @brief Apply pending NBA value and update dirty/edge flags. */
     virtual void commit() = 0;
-    virtual bool is_dirty() const = 0;
-    virtual void clear_dirty() = 0;
     virtual bool has_posedge() const = 0;
     virtual bool has_negedge() const = 0;
     virtual bool has_changed() const = 0;
     virtual void clear_edge_flags() = 0;
+    /** @brief True while this signal is already in this tick's changed list. */
+    virtual bool marked_changed() const = 0;
+    virtual void set_marked_changed(bool v) = 0;
 };
 
 } // namespace corosim

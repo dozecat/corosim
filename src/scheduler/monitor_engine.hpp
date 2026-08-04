@@ -16,45 +16,49 @@ public:
 
     void unwatch_all(SignalBase* sig);
 
+    /**
+     * @brief Fire watches for signals in @p changed that saw an edge this tick.
+     *
+     * Only signals that actually changed value are visited; entries are removed
+     * in place (order-preserving). Firing stays inline so that any() sibling
+     * cancellation (cancel_others) prevents later entries in the same vector
+     * from firing in the same tick.
+     */
     template <typename Fn>
-    void process(Fn&& on_fire) {
-        if (watches_.empty()) return;
+    void process(const std::vector<SignalBase*>& changed, Fn&& on_fire) {
+        if (changed.empty() || watches_.empty()) return;
 
         processing_ = true;
-        decltype(watches_) kept;
 
-        for (auto& [sig, entries] : watches_) {
-            bool has_pos = sig->has_posedge();
-            bool has_neg = sig->has_negedge();
-            bool has_chg = sig->has_changed();
-
-            if (!has_pos && !has_neg && !has_chg) {
-                kept[sig] = std::move(entries);
-                continue;
-            }
-
-            std::vector<MonitorEntry> live;
-            for (auto& e : entries) {
-                if (!e.handle || e.handle.done() || !e.wid || !e.wid->valid())
+        for (size_t ci = 0; ci < changed.size(); ++ci) {
+            SignalBase* sig = changed[ci];
+            if (!sig) continue;
+            auto it = watches_.find(sig);
+            if (it == watches_.end()) continue;
+            auto& entries = it->second;
+            for (size_t i = 0; i < entries.size();) {
+                auto& e = entries[i];
+                if (!e.handle || e.handle.done() || !e.wid || !e.wid->valid()) {
+                    entries.erase(entries.begin() + i);
                     continue;
+                }
                 bool triggered = false;
                 switch (e.edge) {
-                case TriggerInfo::POSEDGE: triggered = has_pos; break;
-                case TriggerInfo::NEGEDGE: triggered = has_neg; break;
-                case TriggerInfo::CHANGE:  triggered = has_chg; break;
+                case TriggerInfo::POSEDGE: triggered = sig->has_posedge(); break;
+                case TriggerInfo::NEGEDGE: triggered = sig->has_negedge(); break;
+                case TriggerInfo::CHANGE:  triggered = sig->has_changed(); break;
                 default: break;
                 }
-                if (triggered) {
-                    on_fire(e.handle, e.wid, e.fire_idx, e.fire_value);
-                } else {
-                    live.push_back(std::move(e));
-                }
+                if (!triggered) { ++i; continue; }
+                on_fire(e.handle, e.wid, e.fire_idx, e.fire_value);
+                // Fired entry is consumed (wid invalidated by fire_coroutine);
+                // an earlier fire may also have cancelled sibling entries below,
+                // so stay on the same index and let the next pass drop them.
+                entries.erase(entries.begin() + i);
             }
-            if (!live.empty())
-                kept[sig] = std::move(live);
+            if (entries.empty()) watches_.erase(it);
         }
 
-        watches_ = std::move(kept);
         processing_ = false;
 
         for (auto& [sig, vec] : pending_)

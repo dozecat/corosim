@@ -14,7 +14,7 @@ namespace corosim {
 class Scheduler {
 public:
     explicit Scheduler(SignalRegistry& signals)
-        : delta_(signals) {}
+        : signals_(signals), delta_(signals) {}
 
     void set_eval_fn(std::function<void()> fn) { delta_.set_eval_fn(std::move(fn)); }
     void set_dump_fn(std::function<void(sim_time)> fn) { dump_fn_ = std::move(fn); }
@@ -42,6 +42,7 @@ private:
     void run_one_tick();
     void fire_coroutine(std::coroutine_handle<> h, WaitId* wid, int* fire_idx, int fire_value);
 
+    SignalRegistry& signals_;
     TimerEngine timer_;
     MonitorEngine monitor_;
     DeltaEngine delta_;

@@ -41,9 +41,11 @@ public:
      */
     template <typename Fn>
     Process* spawn(Fn&& fn) {
-        auto task = std::forward<Fn>(fn)();
+        auto holder = std::make_shared<std::decay_t<Fn>>(std::forward<Fn>(fn));
+        auto task = (*holder)();
         auto id = ProcessId{next_pid_++, 0};
         auto proc = std::make_unique<Process>(id, std::move(task));
+        proc->set_factory_holder(std::move(holder));
         auto* raw = proc.get();
         processes_[id.id] = std::move(proc);
 
@@ -66,8 +68,10 @@ public:
         auto it = processes_.find(id.id);
         if (it == processes_.end() || !it->second) return nullptr;
         auto* proc = it->second.get();
-        auto new_task = std::forward<Fn>(fn)();
+        auto holder = std::make_shared<std::decay_t<Fn>>(std::forward<Fn>(fn));
+        auto new_task = (*holder)();
         proc->restart(std::move(new_task));
+        proc->set_factory_holder(std::move(holder));
         auto& promise = Task::promise_type::from_handle(proc->void_handle());
         promise.kernel = kernel_;
         promise.process = proc;
