@@ -1,49 +1,34 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        signal_registry.hpp
- * @brief       Tracks registered signals and commits pending NBA updates
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Owns the signal list and pending queue used by the scheduler
- *              each tick.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <functional>
 #include <vector>
-#include "signal_base.hpp"
+
+#include "signal/signal_val.hpp"
 
 namespace corosim {
 
+/**
+ * @brief Signal membership manager with two tables: all + pending.
+ *
+ *   signals()   -- all registered signals (observe scans this, O(N))
+ *   pending()   -- signals with a pending NBA (apply scans only this, O(P))
+ */
 class SignalRegistry {
 public:
-    void register_signal(SignalBase* s);
-    void unregister_signal(SignalBase* s);
-    void mark_pending(SignalBase* s);
-    void mark_changed(SignalBase* s);
+    void register_signal(SignalVal* s);
+    void unregister_signal(SignalVal* s);          // also removes from pending_
+    void mark_pending(SignalVal* s);               // called by Signal::next()
 
-    void commit_all();
-    bool any_changed() const { return !changed_signals_.empty(); }
-    const std::vector<SignalBase*>& changed_signals() const { return changed_signals_; }
-    void clear_edge_flags();
+    std::vector<SignalVal*>& signals() { return signals_; }
+    const std::vector<SignalVal*>& signals() const { return signals_; }
+    std::vector<SignalVal*>& pending() { return pending_signals_; }
+    const std::vector<SignalVal*>& pending() const { return pending_signals_; }
 
-    std::vector<SignalBase*>& signals() { return signals_; }
-    const std::vector<SignalBase*>& signals() const { return signals_; }
-
-    std::function<void(SignalBase*)> on_signal_unregistered;
+    std::function<void(SignalVal*)> on_signal_destroyed;  // → Scheduler::on_signal_destroy
 
 private:
-    std::vector<SignalBase*> signals_;
-    std::vector<SignalBase*> pending_signals_;
-    std::vector<SignalBase*> changed_signals_;
+    std::vector<SignalVal*> signals_;
+    std::vector<SignalVal*> pending_signals_;
 };
 
 } // namespace corosim

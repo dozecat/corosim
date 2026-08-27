@@ -1,29 +1,15 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        module.hpp
- * @brief       Hierarchical testbench module base
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Owns child modules/signals and delegates process registration to
- *              Kernel.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
+
 #include "signal/signal.hpp"
 #include "core/kernel.hpp"
 #include "trigger/delay.hpp"
-#include "trigger/edge.hpp"
+#include "trigger/helpers.hpp"
+#include "coroutine/coroutine.hpp"
 
 namespace corosim {
 
@@ -31,7 +17,7 @@ namespace corosim {
  * @brief Named hierarchical TB component.
  *
  * Call attach() to bind a Kernel, then override build() to register signals
- * and processes.
+ * and coroutines.
  */
 class Module {
 public:
@@ -70,37 +56,29 @@ public:
         return *ptr;
     }
 
-    template <typename Trigger, typename Fn>
-    void always(Trigger t, Fn fn) { kernel_->always(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void always(TriggerT t, Fn fn) { kernel_->always(t, std::move(fn)); }
 
     template <typename Fn, typename... Args>
-    Process* instance(Fn&& fn, Args&&... args) {
+    Coroutine* instance(Fn&& fn, Args&&... args) {
         return kernel_->instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
     }
 
-    template <typename Trigger, typename Fn>
-    Process* check(Trigger t, Fn fn) {
-        auto info = t.trigger_info();
-        if (info.type == TriggerType::DELAY) {
-            return instance([interval = info.interval, fn = std::move(fn)]() -> Task {
-                while (true) { co_await delay(interval); fn(); }
-            });
-        }
-        return instance([sig = info.sig, edge = info.type, fn = std::move(fn)]() -> Task {
-            while (true) { co_await EdgeAwaiter{sig, edge}; fn(); }
-        });
+    template <typename TriggerT, typename Fn>
+    Coroutine* check(TriggerT t, Fn fn) {
+        return kernel_->check(t, std::move(fn));
     }
 
-    template <typename Trigger, typename Fn>
-    void sample(Trigger t, Fn fn) { kernel_->sample(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void sample(TriggerT t, Fn fn) { kernel_->sample(t, std::move(fn)); }
 
-    template <typename Trigger, typename Fn>
-    void drive(Trigger t, Fn fn) { kernel_->drive(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void drive(TriggerT t, Fn fn) { kernel_->drive(t, std::move(fn)); }
 
 private:
     std::string name_;
     Kernel* kernel_ = nullptr;
-    std::vector<std::unique_ptr<SignalBase>> owned_signals_;
+    std::vector<std::unique_ptr<SignalVal>> owned_signals_;
     std::vector<Module*> children_;
     std::vector<std::unique_ptr<Module>> owned_modules_;
 };

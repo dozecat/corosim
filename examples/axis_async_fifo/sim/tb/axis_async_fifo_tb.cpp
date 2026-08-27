@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
     int depth = top->tb_depth;
     int nwords = 14;
 
-    Sim sim(*top);
+    Simulator sim(*top);
 
     auto& s_clk = sim.sig(top->s_clk);
     auto& m_clk = sim.sig(top->m_clk);

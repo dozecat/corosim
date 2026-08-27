@@ -1,30 +1,11 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        any.hpp
- * @brief       Wait until the first of several triggers fires
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Returns the index of the winning trigger; cancels the remaining
- *              waits.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <array>
 #include <coroutine>
 #include <utility>
 
-#include "core/types.hpp"
+#include "trigger/spec.hpp"
 #include "core/detail/wait_register.hpp"
-#include "trigger/edge.hpp"
-#include "trigger/delay.hpp"
 
 namespace corosim {
 
@@ -34,10 +15,10 @@ namespace corosim {
  */
 template <typename... Triggers>
 auto any(Triggers&&... triggers) {
-    std::array<TriggerInfo, sizeof...(Triggers)> infos = {{triggers.trigger_info()...}};
+    std::array<Trigger, sizeof...(Triggers)> infos = {{triggers.trigger_info()...}};
 
     struct Awaiter {
-        std::array<TriggerInfo, sizeof...(Triggers)> infos_;
+        std::array<Trigger, sizeof...(Triggers)> infos_;
         int which_ = -1;
 
         bool await_ready() noexcept { return false; }

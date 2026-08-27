@@ -1,24 +1,23 @@
 #pragma once
 
 #include <coroutine>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <vector>
+
 #include "core/types.hpp"
+#include "coroutine/wait.hpp"
+#include "scheduler/fire_ticket.hpp"
 
 namespace corosim {
 
 class TimerEngine {
 public:
-    struct Event {
-        std::coroutine_handle<> handle;
-        WaitId* wid = nullptr;
-        int* fire_idx = nullptr;
-        int fire_value = -1;
-    };
+    using Event = FireTicket;
 
-    TimerId schedule(sim_time deadline, std::coroutine_handle<> h, WaitId* wid,
-                     int fire_idx = -1, int* fired = nullptr);
+    void schedule(sim_time deadline, std::coroutine_handle<> h, std::shared_ptr<WaitToken> token,
+                  int fire_idx = -1, int* fired = nullptr);
 
     sim_time now() const { return now_; }
 
@@ -29,25 +28,23 @@ public:
         now_ = t;
         while (!queue_.empty()) {
             auto& top = queue_.top();
-            if (!top.handle || top.handle.done() || !top.wid || !top.wid->valid()) {
+            if (!top.ticket.handle || top.ticket.handle.done() ||
+                !top.ticket.token || !top.ticket.token->valid()) {
                 queue_.pop();
                 continue;
             }
             if (top.deadline > now_) break;
             auto entry = std::move(const_cast<Entry&>(top));
             queue_.pop();
-            cb({entry.handle, entry.wid, entry.fire_idx, entry.fire_value});
+            cb(entry.ticket);
         }
     }
 
 private:
     struct Entry {
         sim_time deadline;
-        TimerId timer_id;
-        std::coroutine_handle<> handle;
-        WaitId* wid = nullptr;
-        int* fire_idx = nullptr;
-        int fire_value = -1;
+        uint64_t timer_id;
+        FireTicket ticket;
         bool operator>(const Entry& o) const { return deadline > o.deadline; }
     };
 

@@ -1,36 +1,25 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        kernel_impl.hpp
- * @brief       Kernel template method implementations
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Defines always, instance, sample, drive, and eval hooks.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
+#include <type_traits>
+#include <variant>
+
 #include "core/kernel.hpp"
+#include "trigger/trigger_awaiter.hpp"
+#include "trigger/delay.hpp"
 
 namespace corosim::detail {
 
 template <typename Fn>
-inline Task make_always_edge_coro(SignalBase* sig, TriggerType edge, Fn fn) {
+inline Task make_always_trigger_coro(SignalVal* sig, TriggerType t, Fn fn) {
     while (true) {
-        co_await EdgeAwaiter{sig, edge};
+        co_await TriggerAwaiter{sig, t};
         fn();
     }
 }
 
 template <typename Fn>
-inline Task make_always_delay_coro(sim_time interval, Fn fn) {
-    fn();
+inline Task make_always_delay_coro(sim_time interval, Fn fn, bool run_immediate) {
+    if (run_immediate) fn();
     while (true) {
         co_await delay(interval);
         fn();
@@ -47,41 +36,74 @@ void Kernel::pre_eval(Fn&& fn) { sched_.on_pre_eval(std::forward<Fn>(fn)); }
 template <typename Fn>
 void Kernel::post_eval(Fn&& fn) { sched_.on_post_eval(std::forward<Fn>(fn)); }
 
-template <typename Trigger, typename Fn>
-void Kernel::always(Trigger t, Fn fn) {
+template <typename TriggerT, typename Fn>
+Coroutine* Kernel::spawn_repeating(TriggerT t, Fn fn, bool run_immediate) {
     auto info = t.trigger_info();
-    if (info.type == TriggerType::DELAY) {
-        add_process([interval = info.interval, fn = std::move(fn)]() -> Task {
-            return detail::make_always_delay_coro(interval, std::move(fn));
-        });
-    } else {
-        add_process([sig = info.sig, edge = info.type, fn = std::move(fn)]() -> Task {
-            return detail::make_always_edge_coro(sig, edge, std::move(fn));
-        });
-    }
+    return std::visit([&](const auto& spec) -> Coroutine* {
+        using T = std::decay_t<decltype(spec)>;
+        if constexpr (std::is_same_v<T, DelaySpec>) {
+            return add_coroutine([interval = spec.interval, fn = std::move(fn), run_immediate]() -> Task {
+                return detail::make_always_delay_coro(interval, std::move(fn), run_immediate);
+            });
+        } else {
+            return add_coroutine([sig = spec.sig, type = spec.type, fn = std::move(fn)]() -> Task {
+                return detail::make_always_trigger_coro(sig, type, std::move(fn));
+            });
+        }
+    }, info);
+}
+
+template <typename TriggerT, typename Fn>
+void Kernel::always(TriggerT t, Fn fn) {
+    spawn_repeating(t, std::move(fn), true);
+}
+
+template <typename TriggerT, typename Fn>
+Coroutine* Kernel::check(TriggerT t, Fn fn) {
+    return spawn_repeating(t, std::move(fn), false);
 }
 
 template <typename Fn, typename... Args>
-Process* Kernel::instance(Fn&& fn, Args&&... args) {
-    return add_process([fn = std::forward<Fn>(fn), ...args = std::forward<Args>(args)]() -> Task {
+Coroutine* Kernel::instance(Fn&& fn, Args&&... args) {
+    return add_coroutine([fn = std::forward<Fn>(fn), ...args = std::forward<Args>(args)]() -> Task {
         return fn(args...);
     });
 }
 
-template <typename Trigger, typename Fn>
-void Kernel::sample(Trigger t, Fn fn) {
+template <typename TriggerT, typename Fn>
+void Kernel::sample(TriggerT t, Fn fn) {
     auto info = t.trigger_info();
-    sched_.on_pre_eval([this, sig = info.sig, edge = info.type, fn = std::move(fn)] {
-        if (sched_.had_edge(sig, edge)) fn();
-    });
+    std::visit([&](const auto& spec) {
+        using T = std::decay_t<decltype(spec)>;
+        if constexpr (std::is_same_v<T, TriggerSpec>) {
+            sched_.on_pre_eval([this, sig = spec.sig, type = spec.type, fn = std::move(fn)] {
+                if (sched_.triggered(sig, type)) fn();
+            });
+        }
+    }, info);
 }
 
-template <typename Trigger, typename Fn>
-void Kernel::drive(Trigger t, Fn fn) {
+template <typename TriggerT, typename Fn>
+void Kernel::drive(TriggerT t, Fn fn) {
     auto info = t.trigger_info();
-    sched_.on_post_eval([this, sig = info.sig, edge = info.type, fn = std::move(fn)] {
-        if (sched_.had_edge(sig, edge)) fn();
-    });
+    std::visit([&](const auto& spec) {
+        using T = std::decay_t<decltype(spec)>;
+        if constexpr (std::is_same_v<T, TriggerSpec>) {
+            sched_.on_post_eval([this, sig = spec.sig, type = spec.type, fn = std::move(fn)] {
+                if (sched_.triggered(sig, type)) fn();
+            });
+        }
+    }, info);
+}
+
+template <typename Fn>
+Coroutine* Kernel::add_coroutine(Fn&& fn) {
+    auto* c = coroutine_manager_.spawn(std::forward<Fn>(fn));
+    auto& p = Task::promise_type::from_handle(c->void_handle());
+    p.kernel = this;
+    p.coroutine = c;
+    c->resume();
+    return c;
 }
 
 } // namespace corosim

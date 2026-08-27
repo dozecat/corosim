@@ -1,20 +1,3 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        sim.hpp
- * @brief       User-facing Verilator co-simulation entry point
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Binds TOP signals, registers processes, and runs the kernel with
- *              optional VCD dump.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <functional>
@@ -25,7 +8,8 @@
 #include "core/kernel.hpp"
 #include "signal/signal.hpp"
 #include "trigger/delay.hpp"
-#include "trigger/edge.hpp"
+#include "trigger/helpers.hpp"
+#include "coroutine/coroutine.hpp"
 
 namespace corosim {
 
@@ -34,16 +18,17 @@ namespace corosim {
  * @tparam TOP Verilator-generated top module type.
  */
 template <typename TOP>
-class Sim {
+class Simulator {
     TOP& top_;
     Kernel kernel_;
-    std::vector<std::unique_ptr<SignalBase>> owned_signals_;
+    std::vector<std::unique_ptr<SignalVal>> owned_signals_;
     bool dump_setup_ = false;
 
 public:
-    explicit Sim(TOP& top) : top_(top), kernel_() {
+    explicit Simulator(TOP& top) : top_(top), kernel_() {
         kernel_.set_top(&top);
         kernel_.scheduler().set_eval_fn([&top] { top.eval(); });
+        kernel_.scheduler().set_time_hook([this](sim_time t) { kernel_.set_verilator_time(t); });
     }
 
     /** @brief Bind a Verilator field as a Signal. */
@@ -74,32 +59,24 @@ public:
 
     sim_time now() const { return kernel_.now(); }
 
-    template <typename Trigger, typename Fn>
-    void always(Trigger t, Fn fn) { kernel_.always(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void always(TriggerT t, Fn fn) { kernel_.always(t, std::move(fn)); }
 
     template <typename Fn, typename... Args>
-    Process* instance(Fn&& fn, Args&&... args) {
+    Coroutine* instance(Fn&& fn, Args&&... args) {
         return kernel_.instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
     }
 
-    template <typename Trigger, typename Fn>
-    Process* check(Trigger t, Fn fn) {
-        auto info = t.trigger_info();
-        if (info.type == TriggerType::DELAY) {
-            return instance([interval = info.interval, fn = std::move(fn)]() -> Task {
-                while (true) { co_await delay(interval); fn(); }
-            });
-        }
-        return instance([sig = info.sig, edge = info.type, fn = std::move(fn)]() -> Task {
-            while (true) { co_await EdgeAwaiter{sig, edge}; fn(); }
-        });
+    template <typename TriggerT, typename Fn>
+    Coroutine* check(TriggerT t, Fn fn) {
+        return kernel_.check(t, std::move(fn));
     }
 
-    template <typename Trigger, typename Fn>
-    void sample(Trigger t, Fn fn) { kernel_.sample(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void sample(TriggerT t, Fn fn) { kernel_.sample(t, std::move(fn)); }
 
-    template <typename Trigger, typename Fn>
-    void drive(Trigger t, Fn fn) { kernel_.drive(t, std::move(fn)); }
+    template <typename TriggerT, typename Fn>
+    void drive(TriggerT t, Fn fn) { kernel_.drive(t, std::move(fn)); }
 
     template <typename Fn>
     void pre_eval(Fn&& fn) { kernel_.pre_eval(std::forward<Fn>(fn)); }
@@ -113,10 +90,7 @@ public:
      */
     void run(sim_time duration, std::function<void(sim_time)> dump_fn = nullptr) {
         if (dump_fn && !dump_setup_) {
-            kernel_.scheduler().set_dump_fn([this, dump_fn](sim_time t) {
-                kernel_.set_verilator_time(t);
-                dump_fn(t);
-            });
+            kernel_.scheduler().set_dump_fn([dump_fn](sim_time t) { dump_fn(t); });
             dump_setup_ = true;
         }
         kernel_.run(duration);

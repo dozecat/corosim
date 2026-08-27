@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     top.trace(&tfp, 99);
     tfp.open("waveform.vcd");
 
-    Sim sim(top);
+    Simulator sim(top);
 
     auto& rst    = sim.sig(top.rst);
     auto& wr_clk = sim.sig(top.wr_clk);
@@ -70,6 +70,10 @@ int main(int argc, char* argv[]) {
         if (wr_overflow.read()) overflow_evt.next(true);
     });
 
+    // DUT-driven edge regression: wr_full is driven by the DUT, never by the TB.
+    int full_edges = 0;
+    sim.always(posedge(wr_full), [&] { full_edges++; });
+
     sim.instance([&]() -> Task {
         co_await delay(200);
         timeout_evt.next(true);
@@ -77,6 +81,9 @@ int main(int argc, char* argv[]) {
 
     sim.run(500, [&](sim_time t) { tfp.dump(t); });
     tfp.close();
+
+    std::printf("[check] DUT-driven wr_full posedges: %d\n", full_edges);
+    COROSIM_CHECK(full_edges > 0);
 
     std::printf("simulation done\n");
     return 0;

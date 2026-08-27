@@ -1,50 +1,34 @@
 #include "scheduler.hpp"
-#include <algorithm>
 
 namespace corosim {
 
-TimerId Scheduler::schedule_timer(sim_time deadline, std::coroutine_handle<> h, WaitId* wid,
-                                  int fire_idx, int* fired) {
-    return timer_.schedule(deadline, h, wid, fire_idx, fired);
-}
-
-void Scheduler::schedule_monitor(SignalBase* sig, TriggerType edge, std::coroutine_handle<> h,
-                                  WaitId* wid, int fire_idx, int* fired) {
-    monitor_.watch(sig, edge, h, wid, fire_idx, fired);
-}
-
-void Scheduler::fire_coroutine(std::coroutine_handle<> h, WaitId* wid, int* fire_idx, int fire_value) {
-    if (fire_idx) *fire_idx = fire_value;
-    if (cancel_others_fn_) cancel_others_fn_(h, wid);
-    if (wid) wid->invalidate();
-    h.resume();
+void Scheduler::fire_coroutine(const FireTicket& t) {
+    if (t.fire_idx) *t.fire_idx = t.fire_value;
+    if (cancel_others_fn_) cancel_others_fn_(t.handle, t.token);
+    if (t.token) t.token->invalidate();
+    t.handle.resume();
 }
 
 void Scheduler::run_one_tick() {
-    auto fire_lambda = [this](std::coroutine_handle<> h, WaitId* wid, int* fire_idx, int fire_value) {
-        fire_coroutine(h, wid, fire_idx, fire_value);
-    };
+    if (time_hook_) time_hook_(timer_.now());
 
-    // Advance any remaining timers at the current time (e.g. scheduled by a
-    // monitor callback earlier in the same tick → chained delta).
-    timer_.advance_to(timer_.now(), [&](const TimerEngine::Event& ev) {
-        fire_coroutine(ev.handle, ev.wid, ev.fire_idx, ev.fire_value);
-    });
+    timer_.advance_to(timer_.now(), [this](const FireTicket& t) { fire_coroutine(t); });
 
-    delta_.eval();
-    monitor_.process(signals_.changed_signals(), fire_lambda);
-    delta_.commit();
+    delta_.eval();          // apply_pending → sample → top.eval() → drive → apply_pending
+    delta_.observe();       // full scan: changed_ + update_prev (DUT changes here)
+    monitor_.process(delta_.changed(), [this](const FireTicket& t) { fire_coroutine(t); });
+
+    delta_.apply_pending(); // post-monitor commit: same-tick into VCD; no observe
     delta_.end_tick();
 
     if (dump_fn_) dump_fn_(timer_.now());
 }
 
 void Scheduler::run(sim_time duration) {
-    // Time-0 delta cycle: settle DUT combinational state and commit any
-    // initial NBA writes (reset etc.). No timer/monitor processing needed
-    // because no timer has fired yet.
+    // t=0: settle initial combinational state and establish prev_val baselines.
+    if (time_hook_) time_hook_(timer_.now());
     delta_.eval();
-    delta_.commit();
+    delta_.observe();
     delta_.end_tick();
     if (dump_fn_) dump_fn_(timer_.now());
 
@@ -53,9 +37,7 @@ void Scheduler::run(sim_time duration) {
         if (!nd) break;
         if (*nd > duration) break;
 
-        timer_.advance_to(*nd, [&](const TimerEngine::Event& ev) {
-            fire_coroutine(ev.handle, ev.wid, ev.fire_idx, ev.fire_value);
-        });
+        timer_.advance_to(*nd, [this](const FireTicket& t) { fire_coroutine(t); });
         run_one_tick();
     }
 }

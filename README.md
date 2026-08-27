@@ -47,10 +47,11 @@ gtkwave waveform.vcd
 corosim/
 ├── src/                        # Library source
 │   ├── corosim.hpp             # Umbrella header
-│   ├── core/                   # Kernel, Sim<TOP>, Dut
-│   ├── signal/                 # Signal<T>, wide, helpers
-│   ├── trigger/                # Edge, delay, any waiters
-│   ├── process/                # Task, Process, ProcessManager
+│   ├── api/                    # Public facades: Simulator<TOP>, Module, Dut
+│   ├── core/                   # Kernel, types, detail (engine core)
+│   ├── signal/                 # SignalVal, Signal<T>, wide, registry
+│   ├── trigger/                # Trigger specs + delay/any awaiters
+│   ├── coroutine/              # Task, Coroutine, WaitGroup, CoroutineManager
 │   └── scheduler/              # Delta-cycle + timed event engine
 └── examples/
     ├── async_fifo/             # Dual-clock async FIFO (basic)
@@ -59,16 +60,16 @@ corosim/
 
 ## API Reference
 
-### Sim&lt;TOP&gt; — User-Facing Facade
+### Simulator&lt;TOP&gt; — User-Facing Facade
 
-Most testbenches interact through `Sim<TOP>`, which owns a `Kernel` and provides signal binding, process registration, and clock generation:
+Most testbenches interact through `Simulator<TOP>`, which owns a `Kernel` and provides signal binding, coroutine registration, and clock generation:
 
 ```cpp
 #include "corosim.hpp"
 using namespace corosim;
 
 Vasync_fifo top;
-Sim sim(top);                         // wrap the Verilator top
+Simulator sim(top);                  // wrap the Verilator top
 
 auto& clk = sim.sig(top.clk);         // bind a DUT signal
 auto& rst = sim.sig<uint8_t>();       // software-only signal (no DUT)
@@ -156,6 +157,12 @@ sim.sample(posedge(clk), [&] { bfm.sample_inputs(); });
 sim.drive(posedge(clk),  [&] { bfm.drive_outputs(); });
 ```
 
+> **Edge visibility (DUT-driven signals).** The kernel observes signal transitions
+> after each eval, so `co_await posedge(dut_output)` works for DUT-driven outputs.
+> `sample` runs before eval and can only see TB-written edges; `drive` runs after
+> eval, so `triggered()` on a DUT output is true there — a behavior change vs.
+> earlier versions where DUT-driven signals never triggered.
+
 ## Examples
 
 ### async_fifo
@@ -231,10 +238,11 @@ gtkwave waveform.vcd
 corosim/
 ├── src/                        # 库源码
 │   ├── corosim.hpp             # 总头文件
-│   ├── core/                   # 引擎核心、Sim<TOP>、Dut
-│   ├── signal/                 # Signal<T>、wide、helpers
-│   ├── trigger/                # 边沿、延时、多条件等待
-│   ├── process/                # Task、Process、ProcessManager
+│   ├── api/                    # 公共门面：Simulator<TOP>、Module、Dut
+│   ├── core/                   # 引擎核心：Kernel、types、detail
+│   ├── signal/                 # SignalVal、Signal<T>、wide、registry
+│   ├── trigger/                # 触发规格 + delay/any 等待者
+│   ├── coroutine/              # Task、Coroutine、WaitGroup、CoroutineManager
 │   └── scheduler/              # delta 周期 + 定时事件调度
 └── examples/
     ├── async_fifo/             # 双时钟异步 FIFO（基础）
@@ -243,16 +251,16 @@ corosim/
 
 ## API 参考
 
-### Sim&lt;TOP&gt; — 用户接口
+### Simulator&lt;TOP&gt; — 用户接口
 
-大部分测试台通过 `Sim<TOP>` 与引擎交互：
+大部分测试台通过 `Simulator<TOP>` 与引擎交互：
 
 ```cpp
 #include "corosim.hpp"
 using namespace corosim;
 
 Vasync_fifo top;
-Sim sim(top);
+Simulator sim(top);
 
 auto& clk = sim.sig(top.clk);         // 绑定 DUT 信号
 auto& rst = sim.sig<uint8_t>();       // 纯软件信号
@@ -338,6 +346,11 @@ int w = co_await any(posedge(clk), delay(200));
 sim.sample(posedge(clk), [&] { bfm.sample_inputs(); });
 sim.drive(posedge(clk),  [&] { bfm.drive_outputs(); });
 ```
+
+> **边沿可见性（DUT 驱动信号）。** 引擎在每次 eval 后统一观测信号跳变，
+> 因此 `co_await posedge(DUT输出)` 对 DUT 驱动输出同样生效。
+> `sample` 在 eval 前，只能看到 TB 写入产生的边沿；`drive` 在 eval 后，
+> 此时 `triggered(DUT输出)` 为 true——这是相对旧版的行为变化（旧版 DUT 驱动信号永不触发）。
 
 ## 示例
 

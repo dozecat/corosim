@@ -6,8 +6,8 @@
  * @brief       Umbrella header for the corosim public API
  * @see         https://github.com/dozecat/corosim
  *
- * @details     Includes core, signal, trigger, and process headers plus Kernel
- *              template implementations.
+ * @details     Includes core, api, signal, trigger, and coroutine headers plus
+ *              Kernel template implementations.
  *
  * Modification History:
  * Ver   Who  Date        Changes
@@ -20,30 +20,33 @@
 // Core
 #include "core/types.hpp"
 #include "core/kernel.hpp"
-#include "core/sim.hpp"
-#include "core/module.hpp"
-#include "core/dut.hpp"
+
+// API (public facades)
+#include "api/simulator.hpp"
+#include "api/module.hpp"
+#include "api/dut.hpp"
 
 // Signal
-#include "signal/signal_base.hpp"
+#include "signal/signal_val.hpp"
 #include "signal/signal_registry.hpp"
 #include "signal/signal.hpp"
 #include "signal/wide.hpp"
-#include "signal/helpers.hpp"
 
 // Trigger
-#include "trigger/edge.hpp"
+#include "trigger/spec.hpp"
+#include "trigger/trigger_awaiter.hpp"
 #include "trigger/delay.hpp"
 #include "trigger/any.hpp"
+#include "trigger/helpers.hpp"
+
+// Coroutine
+#include "coroutine/task.hpp"
+#include "coroutine/coroutine.hpp"
+#include "coroutine/coroutine_manager.hpp"
 
 // Verification
 #include "check.hpp"
 #include "logger.hpp"
-
-// Process
-#include "process/task.hpp"
-#include "process/process.hpp"
-#include "process/process_manager.hpp"
 
 // Template implementations (must be included after all declarations)
 #include "core/kernel_impl.hpp"

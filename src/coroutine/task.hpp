@@ -1,41 +1,23 @@
-/******************************************************************************
- * Copyright (C) 2025 dozecat. All rights reserved.
- * SPDX-License-Identifier: MIT
- *
- * @file        task.hpp
- * @brief       C++20 coroutine Task return type
- * @see         https://github.com/dozecat/corosim
- *
- * @details     Carries Kernel/Process pointers in promise_type for awaiter
- *              registration.
- *
- * Modification History:
- * Ver   Who  Date        Changes
- * ----  ---- ----------  -----------------------------------------------------
- * 1.0        2026/07/29  Initial release
- ******************************************************************************/
-
 #pragma once
 
 #include <coroutine>
 #include <exception>
-#include <functional>
 
 namespace corosim {
 
 class Kernel;
-class Process;
+class Coroutine;
 
 /**
- * @brief Movable coroutine handle wrapper used as process body return type.
+ * @brief Movable coroutine handle wrapper used as coroutine body return type.
  *
- * Supports nested co_await Task via continuation in promise_type.
+ * Carries Kernel/Coroutine pointers in promise_type for awaiter registration.
  */
 class Task {
 public:
     struct promise_type {
         Kernel* kernel = nullptr;
-        Process* process = nullptr;
+        Coroutine* coroutine = nullptr;
         std::coroutine_handle<> continuation;
         std::exception_ptr exception;
 
