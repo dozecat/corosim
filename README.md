@@ -50,7 +50,7 @@ corosim/
 │   ├── api/                    # Public facades: Simulator<TOP>, Module, Dut
 │   ├── core/                   # Kernel, types, detail (engine core)
 │   ├── signal/                 # SignalVal, Signal<T>, wide, registry
-│   ├── trigger/                # Trigger specs + delay/any awaiters
+│   ├── trigger/                # Trigger specs + posedge/negedge/change/delay/any
 │   ├── coroutine/              # Task, Coroutine, WaitGroup, CoroutineManager
 │   └── scheduler/              # Delta-cycle + timed event engine
 └── examples/
@@ -81,28 +81,28 @@ sim.run(500, [&](sim_time t) { tfp.dump(t); });
 
 For pointer-to-member binding, use `Dut<TOP>`:
 ```cpp
-Dut<TOP> dut(top, sim.signals());
-auto& clk = dut.sig(&TOP::clk);
-auto& rst = dut.sig(&TOP::rst);
+Dut<Vasync_fifo> dut(top, sim.signals());
+auto& clk = dut.sig(&Vasync_fifo::clk);
+auto& rst = dut.sig(&Vasync_fifo::rst);
 ```
 
 ### Signal — Verilator Field Binding
 
 ```cpp
-Signal<uint8_t>  sig(&top->sig_field);  // bind to a Verilator signal
-Signal<bool>     flag;                  // software-only (no binding)
+auto& sig  = sim.sig(top.sig_field);   // bind a Verilator field
+auto& flag = sim.sig<bool>();          // software-only (no binding)
 
 sig.next(val);    // non-blocking assignment (applied at delta end)
 sig.read();       // read current value
 auto v = sig;     // implicit read
 
-// Mapping from Verilator types:
-Signal<uint8_t>  rst(&top.rst);     // 1-bit   → CData
-Signal<uint8_t>  data(&top.data);   // 8-bit   → CData
-Signal<uint16_t> wide(&top.wide);   // 16-bit  → SData
+// Signal type is deduced from the Verilator field type:
+auto& rst  = sim.sig(top.rst);    // 1-bit   → CData  (Signal<uint8_t>)
+auto& data = sim.sig(top.data);   // 8-bit   → CData  (Signal<uint8_t>)
+auto& wide = sim.sig(top.wide);   // 16-bit  → SData  (Signal<uint16_t>)
 ```
 
-For wide vectors (`VlWide<N>`), use `Signal<VlWide<N>>` — see `signal/wide.hpp`.
+For wide vectors (`VlWide<N>`), `sim.sig(top.wide_vec)` yields `Signal<VlWide<N>>` — see `signal/wide.hpp`.
 
 ### Triggers
 
@@ -162,6 +162,17 @@ sim.drive(posedge(clk),  [&] { bfm.drive_outputs(); });
 > `sample` runs before eval and can only see TB-written edges; `drive` runs after
 > eval, so `triggered()` on a DUT output is true there — a behavior change vs.
 > earlier versions where DUT-driven signals never triggered.
+
+### Verification & Logging
+
+```cpp
+COROSIM_CHECK(cond);                  // abort with source location if false
+COROSIM_ASSERT(cond, "message");      // same, with a message
+COROSIM_FAIL("message");              // unconditional abort
+
+set_log_level(LogLevel::INFO);        // TRACE/DEBUG/INFO/WARN/ERROR_/FATAL
+COROSIM_INFO("sim started");          // level-gated log to stderr
+```
 
 ## Examples
 
@@ -241,7 +252,7 @@ corosim/
 │   ├── api/                    # 公共门面：Simulator<TOP>、Module、Dut
 │   ├── core/                   # 引擎核心：Kernel、types、detail
 │   ├── signal/                 # SignalVal、Signal<T>、wide、registry
-│   ├── trigger/                # 触发规格 + delay/any 等待者
+│   ├── trigger/                # 触发规格 + posedge/negedge/change/delay/any 等待者
 │   ├── coroutine/              # Task、Coroutine、WaitGroup、CoroutineManager
 │   └── scheduler/              # delta 周期 + 定时事件调度
 └── examples/
@@ -272,28 +283,28 @@ sim.run(500, [&](sim_time t) { tfp.dump(t); });
 
 使用 `Dut<TOP>` 进行成员指针绑定：
 ```cpp
-Dut<TOP> dut(top, sim.signals());
-auto& clk = dut.sig(&TOP::clk);
-auto& rst = dut.sig(&TOP::rst);
+Dut<Vasync_fifo> dut(top, sim.signals());
+auto& clk = dut.sig(&Vasync_fifo::clk);
+auto& rst = dut.sig(&Vasync_fifo::rst);
 ```
 
 ### Signal — Verilator 信号绑定
 
 ```cpp
-Signal<uint8_t>  sig(&top->sig_field);  // 绑定 Verilator 信号
-Signal<bool>     flag;                  // 纯软件信号
+auto& sig  = sim.sig(top.sig_field);   // 绑定 Verilator 字段
+auto& flag = sim.sig<bool>();          // 纯软件信号（无绑定）
 
 sig.next(val);    // 非阻塞赋值（delta 结束时提交）
 sig.read();       // 读当前值
 auto v = sig;     // 隐式读取
 
-// Verilator 类型映射：
-Signal<uint8_t>  rst(&top.rst);     // 1-bit   → CData
-Signal<uint8_t>  data(&top.data);   // 8-bit   → CData
-Signal<uint16_t> wide(&top.wide);   // 16-bit  → SData
+// 信号类型由 Verilator 字段类型推导：
+auto& rst  = sim.sig(top.rst);    // 1-bit   → CData  (Signal<uint8_t>)
+auto& data = sim.sig(top.data);   // 8-bit   → CData  (Signal<uint8_t>)
+auto& wide = sim.sig(top.wide);   // 16-bit  → SData  (Signal<uint16_t>)
 ```
 
-宽向量（`VlWide<N>`）使用 `Signal<VlWide<N>>`。
+宽向量（`VlWide<N>`）用 `sim.sig(top.wide_vec)` 得到 `Signal<VlWide<N>>`。
 
 ### 触发事件
 
@@ -351,6 +362,17 @@ sim.drive(posedge(clk),  [&] { bfm.drive_outputs(); });
 > 因此 `co_await posedge(DUT输出)` 对 DUT 驱动输出同样生效。
 > `sample` 在 eval 前，只能看到 TB 写入产生的边沿；`drive` 在 eval 后，
 > 此时 `triggered(DUT输出)` 为 true——这是相对旧版的行为变化（旧版 DUT 驱动信号永不触发）。
+
+### 断言与日志
+
+```cpp
+COROSIM_CHECK(cond);                  // 条件不成立则带源位置中止
+COROSIM_ASSERT(cond, "message");      // 同上，可带消息
+COROSIM_FAIL("message");              // 无条件中止
+
+set_log_level(LogLevel::INFO);        // TRACE/DEBUG/INFO/WARN/ERROR_/FATAL
+COROSIM_INFO("sim started");          // 按级别输出到 stderr
+```
 
 ## 示例
 
