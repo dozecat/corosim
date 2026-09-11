@@ -33,7 +33,9 @@ public:
                 queue_.pop();
                 continue;
             }
-            if (top.deadline > now_) break;
+            if (top.deadline > now_) {
+                break;
+            }
             auto entry = std::move(const_cast<Entry&>(top));
             queue_.pop();
             cb(entry.ticket);

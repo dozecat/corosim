@@ -68,21 +68,10 @@ public:
     }
 
     template <typename TriggerT, typename Fn>
-    Coroutine* check(TriggerT t, Fn fn) {
-        return kernel_.check(t, std::move(fn));
-    }
-
-    template <typename TriggerT, typename Fn>
     void sample(TriggerT t, Fn fn) { kernel_.sample(t, std::move(fn)); }
 
     template <typename TriggerT, typename Fn>
     void drive(TriggerT t, Fn fn) { kernel_.drive(t, std::move(fn)); }
-
-    template <typename Fn>
-    void pre_eval(Fn&& fn) { kernel_.pre_eval(std::forward<Fn>(fn)); }
-
-    template <typename Fn>
-    void post_eval(Fn&& fn) { kernel_.post_eval(std::forward<Fn>(fn)); }
 
     /**
      * @brief Run simulation up to @p duration.

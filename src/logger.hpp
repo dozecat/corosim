@@ -36,7 +36,9 @@ inline LogLevel& min_level() {
 
 inline void log_write(LogLevel lv, std::string_view msg,
                       std::source_location loc = std::source_location::current()) {
-    if (lv < min_level()) return;
+    if (lv < min_level()) {
+        return;
+    }
     std::fprintf(stderr, "[%s] %s:%d: %s\n",
                  level_name(lv).data(),
                  loc.file_name(), loc.line(),

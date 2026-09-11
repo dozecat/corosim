@@ -21,18 +21,22 @@ public:
         std::memset(store_.m_storage, 0, sizeof(uint32_t) * N);
         ptr_ = ptr ? ptr : &store_;
         std::memcpy(prev_val_.m_storage, ptr_->m_storage, sizeof(uint32_t) * N);
-        reg_->register_signal(this);
+        reg_->add(this);
     }
 
     ~Signal() {
-        if (reg_) reg_->unregister_signal(this);
+        if (reg_) {
+            reg_->remove(this);
+        }
     }
 
     /** @brief Pointer to committed wide storage words. */
     const uint32_t* read() const { return ptr_->m_storage; }
     /** @brief Schedule NBA of a full VlWide value. */
     void next(const VlWide<N>& val) {
-        if (!pending_) reg_->mark_pending(this);
+        if (!pending_) {
+            reg_->mark_pending(this);
+        }
         next_val_ = val;
         pending_ = true;
     }

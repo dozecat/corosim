@@ -34,15 +34,21 @@ public:
      */
     template <typename Fn>
     void process(const std::vector<ChangeRecord>& changed, Fn&& on_fire) {
-        if (changed.empty() || watches_.empty()) return;
+        if (changed.empty() || watches_.empty()) {
+            return;
+        }
 
         processing_ = true;
 
         for (size_t ci = 0; ci < changed.size(); ++ci) {
             SignalVal* sig = changed[ci].sig;
-            if (!sig) continue;
+            if (!sig) {
+                continue;
+            }
             auto it = watches_.find(sig);
-            if (it == watches_.end()) continue;
+            if (it == watches_.end()) {
+                continue;
+            }
             auto& entries = it->second;
             const auto& trig = changed[ci].trig;
             for (size_t i = 0; i < entries.size();) {
@@ -59,18 +65,25 @@ public:
                 case TriggerType::CHANGE:  triggered = trig.changed; break;
                 default: break;
                 }
-                if (!triggered) { ++i; continue; }
+                if (!triggered) {
+                    ++i;
+                    continue;
+                }
                 on_fire(e.ticket);
                 entries.erase(entries.begin() + i);
             }
-            if (entries.empty()) watches_.erase(it);
+            if (entries.empty()) {
+                watches_.erase(it);
+            }
         }
 
         processing_ = false;
 
-        for (auto& [sig, vec] : pending_)
-            for (auto& e : vec)
+        for (auto& [sig, vec] : pending_) {
+            for (auto& e : vec) {
                 watches_[sig].push_back(std::move(e));
+            }
+        }
         pending_.clear();
     }
 

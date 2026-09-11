@@ -23,26 +23,38 @@ public:
      * @param ptr Optional Verilator/storage pointer; nullptr uses internal store.
      */
     explicit Signal(SignalRegistry& reg, storage_t* ptr = nullptr)
-        : reg_(&reg), ptr_(ptr ? ptr : &store_), prev_val_(ptr ? *ptr : storage_t{}) {
-        reg_->register_signal(this);
+        : reg_(&reg),
+          ptr_(ptr ? ptr : &store_),
+          prev_val_(ptr ? *ptr : storage_t{}) {
+        reg_->add(this);
     }
 
     ~Signal() {
-        if (reg_) reg_->unregister_signal(this);
+        if (reg_) {
+            reg_->remove(this);
+        }
     }
 
     /** @brief Current committed value. */
     T read() const {
-        if constexpr (is_bool_alias) return *ptr_ != 0;
-        else return *ptr_;
+        if constexpr (is_bool_alias) {
+            return *ptr_ != 0;
+        } else {
+            return *ptr_;
+        }
     }
     operator T() const { return read(); }
 
     /** @brief Schedule non-blocking assign; applied on next apply_pending(). */
     void next(T val) {
-        if (!pending_) reg_->mark_pending(this);
-        if constexpr (is_bool_alias) next_val_ = val ? 1 : 0;
-        else next_val_ = static_cast<storage_t>(val);
+        if (!pending_) {
+            reg_->mark_pending(this);
+        }
+        if constexpr (is_bool_alias) {
+            next_val_ = val ? 1 : 0;
+        } else {
+            next_val_ = static_cast<storage_t>(val);
+        }
         pending_ = true;
     }
 

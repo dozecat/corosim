@@ -17,13 +17,17 @@ Kernel* get_kernel(std::coroutine_handle<> h) {
 void register_trigger_wait(SignalVal* sig, TriggerType t, std::coroutine_handle<> h,
                            int fire_idx, int* fired) {
     auto* k = get_kernel(h);
-    if (!k) return;
+    if (!k) {
+        return;
+    }
     k->register_trigger_wait(sig, t, h, fire_idx, fired);
 }
 
 void register_delay_wait(std::coroutine_handle<> h, sim_time interval, int fire_idx, int* fired) {
     auto* k = get_kernel(h);
-    if (!k) return;
+    if (!k) {
+        return;
+    }
     k->register_delay_wait(h, interval, fire_idx, fired);
 }
 
@@ -33,7 +37,9 @@ void register_delay_wait(std::coroutine_handle<> h, sim_time interval, int fire_
  */
 void register_compound_wait(std::coroutine_handle<> h, const Trigger* infos, size_t count, int* fired) {
     auto* k = get_kernel(h);
-    if (!k) return;
+    if (!k) {
+        return;
+    }
     for (size_t i = 0; i < count; ++i) {
         std::visit([&](const auto& spec) {
             using T = std::decay_t<decltype(spec)>;

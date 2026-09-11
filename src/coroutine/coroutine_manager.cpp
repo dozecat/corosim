@@ -3,18 +3,6 @@
 
 namespace corosim {
 
-Coroutine* CoroutineManager::find_coroutine(std::coroutine_handle<> h) const {
-    return Task::promise_type::from_handle(h).coroutine;
-}
-
-size_t CoroutineManager::active_count() const {
-    size_t n = 0;
-    for (auto& [id, proc] : coroutines_) {
-        if (proc && proc->active() && !proc->done()) n++;
-    }
-    return n;
-}
-
 void CoroutineManager::cleanup_finished() {
     auto it = coroutines_.begin();
     while (it != coroutines_.end()) {
@@ -27,10 +15,12 @@ void CoroutineManager::cleanup_finished() {
 }
 
 std::exception_ptr CoroutineManager::collect_exceptions() {
-    for (auto& [id, proc] : coroutines_) {
-        if (proc && proc->done()) {
-            auto ep = proc->get_exception();
-            if (ep) return ep;
+    for (auto& [id, coro] : coroutines_) {
+        if (coro && coro->done()) {
+            auto ep = coro->get_exception();
+            if (ep) {
+                return ep;
+            }
         }
     }
     return nullptr;

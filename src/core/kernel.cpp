@@ -20,10 +20,12 @@ Kernel::Kernel()
     // any(): when one wait fires, invalidate sibling WaitTokens on the same coroutine.
     sched_.set_cancel_fn([](std::coroutine_handle<> h, const std::shared_ptr<WaitToken>& keep) {
         auto* c = get_coroutine_from_handle(h);
-        if (c) c->waits().cancel_others(keep);
+        if (c) {
+            c->waits().cancel_others(keep);
+        }
     });
     // Signal destruction notifies scheduler to clean monitor entries.
-    signals_.on_signal_destroyed = [this](SignalVal* s) { sched_.on_signal_destroy(s); };
+    signals_.on_destroyed = [this](SignalVal* s) { sched_.on_signal_destroy(s); };
 }
 
 Kernel::~Kernel() {}
@@ -32,7 +34,9 @@ Kernel::~Kernel() {}
 void Kernel::set_verilator_time(sim_time t) {
     if (top_) {
         auto* ctp = static_cast<VerilatedModel*>(top_)->contextp();
-        if (ctp) ctp->time(t);
+        if (ctp) {
+            ctp->time(t);
+        }
     }
 }
 
@@ -58,7 +62,9 @@ void Kernel::run(sim_time duration) {
     auto ep = coroutine_manager_.collect_exceptions();
     coroutine_manager_.cleanup_finished();
 
-    if (ep) std::rethrow_exception(ep);
+    if (ep) {
+        std::rethrow_exception(ep);
+    }
 }
 
 } // namespace corosim

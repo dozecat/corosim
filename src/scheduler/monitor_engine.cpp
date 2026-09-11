@@ -4,7 +4,9 @@ namespace corosim {
 
 void MonitorEngine::watch(SignalVal* sig, TriggerType type, std::coroutine_handle<> h,
                           std::shared_ptr<WaitToken> token, int fire_idx, int* fired) {
-    if (!sig) return;
+    if (!sig) {
+        return;
+    }
     FireTicket t;
     t.handle = h;
     t.token = std::move(token);

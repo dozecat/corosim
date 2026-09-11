@@ -43,10 +43,6 @@ public:
     template <typename Fn, typename... Args>
     Coroutine* instance(Fn&& fn, Args&&... args);
 
-    /** @brief Spawn a repeating checker (same as always but delay waits first). */
-    template <typename TriggerT, typename Fn>
-    Coroutine* check(TriggerT t, Fn fn);
-
     /** @brief Run @p fn on trigger before DUT eval (sample phase). */
     template <typename TriggerT, typename Fn>
     void sample(TriggerT t, Fn fn);
@@ -54,14 +50,6 @@ public:
     /** @brief Run @p fn on trigger after DUT eval (drive phase). */
     template <typename TriggerT, typename Fn>
     void drive(TriggerT t, Fn fn);
-
-    /** @brief Hook invoked before each DUT eval. */
-    template <typename Fn>
-    void pre_eval(Fn&& fn);
-
-    /** @brief Hook invoked after each DUT eval. */
-    template <typename Fn>
-    void post_eval(Fn&& fn);
 
     /** @brief Run until @p duration or no pending timers. */
     void run(sim_time duration);
@@ -76,7 +64,7 @@ public:
 
 private:
     template <typename TriggerT, typename Fn>
-    Coroutine* spawn_repeating(TriggerT t, Fn fn, bool run_immediate);
+    Coroutine* spawn_repeating(TriggerT t, Fn fn);
 
     template <typename Fn>
     Coroutine* add_coroutine(Fn&& fn);

@@ -32,15 +32,29 @@ public:
     /** @brief Commit pending NBAs; scans only Registry::pending(), O(P). Does not observe. */
     void apply_pending() {
         auto& pend = signals_.pending();
-        for (auto* s : pend) if (s) s->apply_next();
+        for (auto* s : pend) {
+            if (s) {
+                s->apply_next();
+            }
+        }
         pend.clear();
     }
 
     void eval() {
         apply_pending();
-        for (auto& h : pre_eval_hooks_) if (h) h();
-        if (eval_fn_) eval_fn_();
-        for (auto& h : post_eval_hooks_) if (h) h();
+        for (auto& h : pre_eval_hooks_) {
+            if (h) {
+                h();
+            }
+        }
+        if (eval_fn_) {
+            eval_fn_();
+        }
+        for (auto& h : post_eval_hooks_) {
+            if (h) {
+                h();
+            }
+        }
         apply_pending();
     }
 
@@ -48,9 +62,13 @@ public:
     void observe() {
         changed_.clear();
         for (auto* s : signals_.signals()) {
-            if (!s) continue;
+            if (!s) {
+                continue;
+            }
             auto trig = s->trig_info();
-            if (trig.changed) changed_.push_back({s, trig});
+            if (trig.changed) {
+                changed_.push_back({s, trig});
+            }
             s->update_prev();
         }
     }
@@ -59,7 +77,9 @@ public:
 
     /** @brief Query whether @p sig currently satisfies trigger @p t (pure). */
     bool triggered(SignalVal* sig, TriggerType t) const {
-        if (!sig) return false;
+        if (!sig) {
+            return false;
+        }
         auto trig = sig->trig_info();
         switch (t) {
         case TriggerType::POSEDGE: return trig.posedge;

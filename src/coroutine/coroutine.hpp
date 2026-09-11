@@ -11,7 +11,6 @@ namespace corosim {
 
 struct CoroutineId {
     uint64_t id;
-    uint32_t generation;   // bumped on restart
 
     bool operator==(const CoroutineId&) const = default;
 };
@@ -30,11 +29,8 @@ public:
     Coroutine& operator=(const Coroutine&) = delete;
 
     CoroutineId id() const { return id_; }
-    CoroutineId next_generation() const { return {id_.id, id_.generation + 1}; }
     bool done() const { return task_.done(); }
     bool active() const { return state_ != CoroutineState::DONE && state_ != CoroutineState::CANCELLED; }
-    bool repeats() const { return repeating_; }
-    void set_repeating(bool v) { repeating_ = v; }
     CoroutineState state() const { return state_; }
 
     WaitGroup& waits() { return wait_group_; }
@@ -47,7 +43,6 @@ public:
 
     void resume();
     void cancel();
-    void restart(Task&& new_task);
 
     std::exception_ptr get_exception() const { return task_.get_exception(); }
 
@@ -57,10 +52,6 @@ private:
     Task task_;
     CoroutineState state_ = CoroutineState::ACTIVE;
     WaitGroup wait_group_;
-    bool repeating_ = false;
 };
-
-/** @brief Public compatibility alias (instance()/check() keep returning Process*). */
-using Process = Coroutine;
 
 } // namespace corosim

@@ -33,7 +33,9 @@ public:
     /** @brief Bind @p kernel, recurse to children, then call build(). */
     void attach(Kernel& kernel) {
         kernel_ = &kernel;
-        for (auto* child : children_) child->attach(kernel);
+        for (auto* child : children_) {
+            child->attach(kernel);
+        }
         build();
     }
 
@@ -62,11 +64,6 @@ public:
     template <typename Fn, typename... Args>
     Coroutine* instance(Fn&& fn, Args&&... args) {
         return kernel_->instance(std::forward<Fn>(fn), std::forward<Args>(args)...);
-    }
-
-    template <typename TriggerT, typename Fn>
-    Coroutine* check(TriggerT t, Fn fn) {
-        return kernel_->check(t, std::move(fn));
     }
 
     template <typename TriggerT, typename Fn>

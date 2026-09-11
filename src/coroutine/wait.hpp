@@ -21,7 +21,6 @@ public:
     void invalidate() { valid_ = false; }
 
 private:
-    uint64_t id = 0;   // debug only
     bool valid_ = true;
 };
 
