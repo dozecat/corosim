@@ -6,6 +6,7 @@
 
 #include "core/types.hpp"
 #include "core/kernel.hpp"
+#include "check.hpp"
 #include "signal/signal.hpp"
 #include "trigger/delay.hpp"
 #include "trigger/helpers.hpp"
@@ -49,10 +50,29 @@ public:
         return *ptr;
     }
 
-    /** @brief Toggle @p sig every period/2 time units. */
+    /**
+     * @brief Generate a clock with a full @p period.
+     * @param start_high Initial clock level. Defaults to low.
+     *
+     * Odd periods alternate floor(period / 2) and ceil(period / 2) half-intervals.
+     */
     template <typename T>
-    void clock(Signal<T>& sig, sim_time period) {
-        kernel_.always(corosim::delay(period / 2), [p = &sig] { p->next(!p->read()); });
+    void clock(Signal<T>& sig, sim_time period, bool start_high = false) {
+        static_assert(sizeof(T) <= 1, "clock requires a 1-byte signal type");
+        COROSIM_ASSERT(period >= 2, "clock period must be at least 2 time units");
+
+        kernel_.instance([p = &sig, period, start_high]() -> Task {
+            bool high = start_high;
+            p->next(high ? 1 : 0);
+
+            const sim_time high_time = period / 2;
+            const sim_time low_time = period - high_time;
+            while (true) {
+                co_await delay(high ? high_time : low_time);
+                high = !high;
+                p->next(high ? 1 : 0);
+            }
+        });
     }
 
     SignalRegistry& signals() { return kernel_.signals(); }

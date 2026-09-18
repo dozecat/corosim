@@ -47,7 +47,12 @@ private:
         sim_time deadline;
         uint64_t timer_id;
         FireTicket ticket;
-        bool operator>(const Entry& o) const { return deadline > o.deadline; }
+        bool operator>(const Entry& o) const {
+            if (deadline != o.deadline) {
+                return deadline > o.deadline;
+            }
+            return timer_id > o.timer_id;
+        }
     };
 
     std::priority_queue<Entry, std::vector<Entry>, std::greater<>> queue_;

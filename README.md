@@ -74,7 +74,7 @@ Simulator sim(top);                  // wrap the Verilator top
 auto& clk = sim.sig(top.clk);         // bind a DUT signal
 auto& rst = sim.sig<uint8_t>();       // software-only signal (no DUT)
 
-sim.clock(clk, 10);                   // toggle clk every 5 time units
+sim.clock(clk, 10);                   // full period 10; toggles every 5, starts low
 
 sim.run(500, [&](sim_time t) { tfp.dump(t); });
 ```
@@ -120,7 +120,7 @@ For wide vectors (`VlWide<N>`), `sim.sig(top.wide_vec)` yields `Signal<VlWide<N>
 ```cpp
 // Auto-repeat on trigger
 sim.always(posedge(clk), [&] { cnt.next(cnt.read() + 1); });
-sim.always(delay(5), [&] { clk.next(!clk.read()); });
+sim.always(delay(5), [&] { clk.next(!clk.read()); }); // first fire at t=5
 
 // One-shot coroutine (lambda)
 sim.instance([&]() -> Task {
@@ -131,6 +131,24 @@ sim.instance([&]() -> Task {
 // One-shot coroutine (standalone function)
 sim.instance(reset, &rst, &wr_clk);
 ```
+
+`Task` is only the return type of a top-level process. It is not awaitable:
+
+```cpp
+// Not supported
+co_await child_task();
+```
+
+Use `sim.instance()` for coroutine processes and keep `sim.always()` callbacks non-suspending:
+
+```cpp
+sim.always(posedge(clk), [&] {
+    // must return void; do not use co_await here
+});
+```
+
+`sim.clock(sig, period)` takes the full period. The optional third argument selects the
+initial level, and the default is low.
 
 Coroutine functions support `co_await` for synchronization:
 
@@ -276,7 +294,7 @@ Simulator sim(top);
 auto& clk = sim.sig(top.clk);         // 绑定 DUT 信号
 auto& rst = sim.sig<uint8_t>();       // 纯软件信号
 
-sim.clock(clk, 10);                   // 每 5 时间单位翻转 clk
+sim.clock(clk, 10);                   // 完整周期 10；每 5 时间单位翻转，初始为低
 
 sim.run(500, [&](sim_time t) { tfp.dump(t); });
 ```
@@ -322,7 +340,7 @@ auto& wide = sim.sig(top.wide);   // 16-bit  → SData  (Signal<uint16_t>)
 ```cpp
 // 触发重复执行
 sim.always(posedge(clk), [&] { cnt.next(cnt.read() + 1); });
-sim.always(delay(5), [&] { clk.next(!clk.read()); });
+sim.always(delay(5), [&] { clk.next(!clk.read()); }); // t=5 首次执行
 
 // 一次性协程 (lambda)
 sim.instance([&]() -> Task {
@@ -333,6 +351,23 @@ sim.instance([&]() -> Task {
 // 一次性协程 (独立函数)
 sim.instance(reset, &rst, &wr_clk);
 ```
+
+`Task` 只表示顶层进程的返回类型，不是可等待对象：
+
+```cpp
+// 不支持
+co_await child_task();
+```
+
+协程进程统一使用 `sim.instance()`，`sim.always()` 回调必须是无挂起的 `void` 回调：
+
+```cpp
+sim.always(posedge(clk), [&] {
+    // 必须返回 void，回调内不能使用 co_await
+});
+```
+
+`sim.clock(sig, period)` 的 `period` 表示完整周期；第三个可选参数控制初始电平，默认从低电平开始。
 
 协程函数中使用 `co_await` 同步：
 

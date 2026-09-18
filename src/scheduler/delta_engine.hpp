@@ -75,6 +75,8 @@ public:
 
     void end_tick() { changed_.clear(); }
 
+    bool has_pending() const { return !signals_.pending().empty(); }
+
     /** @brief Query whether @p sig currently satisfies trigger @p t (pure). */
     bool triggered(SignalVal* sig, TriggerType t) const {
         if (!sig) {

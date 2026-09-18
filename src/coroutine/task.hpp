@@ -9,35 +9,24 @@ class Kernel;
 class Coroutine;
 
 /**
- * @brief Movable coroutine handle wrapper used as coroutine body return type.
+ * @brief Movable coroutine handle wrapper used as a top-level process.
  *
- * Carries Kernel/Coroutine pointers in promise_type for awaiter registration.
+ * Task is not awaitable. Spawned processes use sim.instance() and suspend only
+ * on simulation events. Carries Kernel/Coroutine pointers for wait registration.
  */
 class Task {
 public:
     struct promise_type {
         Kernel* kernel = nullptr;
         Coroutine* coroutine = nullptr;
-        std::coroutine_handle<> continuation;
         std::exception_ptr exception;
 
         Task get_return_object() noexcept {
             return Task(std::coroutine_handle<promise_type>::from_promise(*this));
         }
 
-        struct FinalAwaiter {
-            bool await_ready() noexcept { return false; }
-            void await_suspend(std::coroutine_handle<promise_type> h) noexcept {
-                auto& p = h.promise();
-                if (p.continuation) {
-                    p.continuation.resume();
-                }
-            }
-            void await_resume() noexcept {}
-        };
-
         std::suspend_always initial_suspend() noexcept { return {}; }
-        FinalAwaiter final_suspend() noexcept { return {}; }
+        std::suspend_always final_suspend() noexcept { return {}; }
         void return_void() {}
         void unhandled_exception() { exception = std::current_exception(); }
 
@@ -65,15 +54,6 @@ public:
             handle_.destroy();
         }
     }
-
-    bool await_ready() const noexcept { return done(); }
-    void await_suspend(std::coroutine_handle<> h) noexcept {
-        handle_.promise().continuation = h;
-        if (handle_ && !handle_.done()) {
-            handle_.resume();
-        }
-    }
-    void await_resume() noexcept {}
 
     void resume() {
         if (handle_ && !handle_.done()) {

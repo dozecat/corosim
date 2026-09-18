@@ -19,7 +19,6 @@ inline Task make_always_trigger_coro(SignalVal* sig, TriggerType t, Fn fn) {
 
 template <typename Fn>
 inline Task make_always_delay_coro(sim_time interval, Fn fn) {
-    fn();
     while (true) {
         co_await delay(interval);
         fn();
@@ -49,11 +48,15 @@ Coroutine* Kernel::spawn_repeating(TriggerT t, Fn fn) {
 
 template <typename TriggerT, typename Fn>
 void Kernel::always(TriggerT t, Fn fn) {
+    static_assert(std::is_void_v<std::invoke_result_t<Fn&>>,
+                  "always callback must return void; use instance() for coroutine processes");
     spawn_repeating(t, std::move(fn));
 }
 
 template <typename Fn, typename... Args>
 Coroutine* Kernel::instance(Fn&& fn, Args&&... args) {
+    static_assert(std::is_same_v<std::invoke_result_t<Fn&, Args&...>, Task>,
+                  "instance callable must return Task");
     return add_coroutine([fn = std::forward<Fn>(fn), ...args = std::forward<Args>(args)]() -> Task {
         return fn(args...);
     });
@@ -61,6 +64,8 @@ Coroutine* Kernel::instance(Fn&& fn, Args&&... args) {
 
 template <typename TriggerT, typename Fn>
 void Kernel::sample(TriggerT t, Fn fn) {
+    static_assert(std::is_void_v<std::invoke_result_t<Fn&>>,
+                  "sample callback must return void");
     auto info = t.trigger_info();
     std::visit([&](const auto& spec) {
         using T = std::decay_t<decltype(spec)>;
@@ -76,6 +81,8 @@ void Kernel::sample(TriggerT t, Fn fn) {
 
 template <typename TriggerT, typename Fn>
 void Kernel::drive(TriggerT t, Fn fn) {
+    static_assert(std::is_void_v<std::invoke_result_t<Fn&>>,
+                  "drive callback must return void");
     auto info = t.trigger_info();
     std::visit([&](const auto& spec) {
         using T = std::decay_t<decltype(spec)>;

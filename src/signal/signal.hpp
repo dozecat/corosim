@@ -29,6 +29,11 @@ public:
         reg_->add(this);
     }
 
+    Signal(const Signal&) = delete;
+    Signal& operator=(const Signal&) = delete;
+    Signal(Signal&&) = delete;
+    Signal& operator=(Signal&&) = delete;
+
     ~Signal() {
         if (reg_) {
             reg_->remove(this);

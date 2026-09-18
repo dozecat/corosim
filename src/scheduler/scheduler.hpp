@@ -52,6 +52,7 @@ public:
     void on_signal_destroy(SignalVal* sig) { monitor_.unwatch_all(sig); }
 
 private:
+    void settle();
     void run_one_tick();
     void fire_coroutine(const FireTicket& t);
 

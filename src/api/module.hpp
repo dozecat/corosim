@@ -30,13 +30,13 @@ public:
     const std::string& name() const { return name_; }
     Kernel& kernel() { return *kernel_; }
 
-    /** @brief Bind @p kernel, recurse to children, then call build(). */
+    /** @brief Bind @p kernel, build this module, then attach children. */
     void attach(Kernel& kernel) {
         kernel_ = &kernel;
+        build();
         for (auto* child : children_) {
             child->attach(kernel);
         }
-        build();
     }
 
     /** @brief Create an owned Signal, optionally bound to @p hdl_ptr. */

@@ -2,6 +2,7 @@
 
 #include <coroutine>
 
+#include "check.hpp"
 #include "trigger/spec.hpp"
 #include "core/detail/wait_register.hpp"
 
@@ -11,9 +12,11 @@ namespace corosim {
 struct Delay {
     sim_time interval_;
 
-    explicit Delay(sim_time n) : interval_(n) {}
+    explicit Delay(sim_time n) : interval_(n) {
+        COROSIM_ASSERT(interval_ > 0, "delay interval must be greater than 0");
+    }
 
-    bool await_ready() const noexcept { return interval_ == 0; }
+    bool await_ready() const noexcept { return false; }
 
     void await_suspend(std::coroutine_handle<> h) {
         detail::register_delay_wait(h, interval_);
